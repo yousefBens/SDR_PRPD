@@ -27,7 +27,7 @@ data/
 *.npy
 
 # Figures (optionnel si générées)
-Main_figs/
+#Main_figs/
 
 # VS Code
 .vscode/
