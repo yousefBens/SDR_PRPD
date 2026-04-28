@@ -1,0 +1,33 @@
+# Environnement Python
+env/
+venv/
+.venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Fichiers temporaires
+*.tmp
+
+# Données lourdes (optionnel)
+data/
+*.csv
+*.npy
+
+# Figures (optionnel si générées)
+Main_figs/
+
+# VS Code
+.vscode/
