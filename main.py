@@ -112,7 +112,8 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
     
     f_ref = 50.0
     phase_ref = (360.0 * f_ref * t) % 360.0
-    
+
+    # La distribution des DP
     prob_pd = (
         0.8 * gaussian_phase(phase_ref, 60, 5) +
         1.0 * gaussian_phase(phase_ref, 240, 15)
@@ -121,10 +122,13 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
     
 
     rng = np.random.default_rng(42)
-    p_global = 0.01 * prob_pd
+    # On prend 1% * there probs des samples comme des candidats
+    p_global = 0.0001 * prob_pd
     candidats = np.where(rng.random(num_samps) < p_global)[0]
-    
-    min_gap_samples = int(0.0002 * rate)
+
+
+    # La diff entre les candidats sur les quelle on va appliquer les Pulses de DP
+    min_gap_samples = int(200e-6 * rate)
     
     event_indices = []
     last_idx = -min_gap_samples
@@ -164,7 +168,7 @@ def Process_PD_Signal(samples, rate, f_offset=10e6):
     
     print(" -> Filtrage IF (Bande étroite UHF100 : 3 MHz)...")
  
-    sos_if = butter(4, 1.5e6 / (rate / 2), btype='low', output='sos')
+    sos_if = butter(4, 1e6 / (rate / 2), btype='low', output='sos')
     samples_if = sosfiltfilt(sos_if, samples_dc)
     
     print(" -> Extraction de l'enveloppe brute...")
@@ -286,10 +290,10 @@ def main():
     
 
     # # Plot signal Brute
-    freqs, psd_db = Freq_domain_gr_blocks(samples, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    _, _ = Freq_domain_gr_blocks(pd_simulated, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    _, _ = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    Time_domain_gr(pd_simulated, RATE)
+    # freqs, psd_db = Freq_domain_gr_blocks(samples, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
+    # _, _ = Freq_domain_gr_blocks(pd_simulated, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
+    # _, _ = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
+    # Time_domain_gr(pd_simulated, RATE)
     
     # # Band pass in time
     # filtred_signal = Bandpass_filter_inTimeDomain(samples, f_low, f_hight, RATE)
