@@ -4,6 +4,8 @@ import uhd
 from scipy.signal import butter, filtfilt, freqs, find_peaks, sosfiltfilt
 import os
 
+import threading
+import time
 
 
 FREQ = 100e6
@@ -115,15 +117,15 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
 
     # La distribution des DP
     prob_pd = (
-        0.8 * gaussian_phase(phase_ref, 60, 5) +
-        1.0 * gaussian_phase(phase_ref, 240, 15)
+        0.8 * gaussian_phase(phase_ref, 60, 20) +
+        1.0 * gaussian_phase(phase_ref, 200, 8)
     )
     prob_pd = prob_pd / np.max(prob_pd)
     
 
     rng = np.random.default_rng(42)
     # On prend 1% * there probs des samples comme des candidats
-    p_global = 0.0001 * prob_pd
+    p_global = 0.01 * prob_pd
     candidats = np.where(rng.random(num_samps) < p_global)[0]
 
 
@@ -158,55 +160,79 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
 
 def Process_PD_Signal(samples, rate, f_offset=10e6):
     """
-    Traite le signal brut SDR.
+    Traite le signal reçu SDR pour générer un PRPD propre :
+    1) translation vers 0 Hz
+    2) filtrage IF
+    3) extraction enveloppe
+    4) détection des impulsions PD
+    5) conversion pic -> phase 50 Hz + amplitude
     """
+
     N = len(samples)
     t = np.arange(N) / rate
-    
-    print(" -> Translation en Bande de Base (-10 MHz)...")
+
+    print(" -> Translation en bande de base...")
     samples_dc = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
-    
-    print(" -> Filtrage IF (Bande étroite UHF100 : 3 MHz)...")
- 
-    sos_if = butter(4, 1e6 / (rate / 2), btype='low', output='sos')
+
+    print(" -> Filtrage IF autour de 0 Hz...")
+    cutoff_if = 1e6
+    sos_if = butter(
+        4,
+        cutoff_if / (rate / 2),
+        btype="low",
+        output="sos"
+    )
     samples_if = sosfiltfilt(sos_if, samples_dc)
-    
-    print(" -> Extraction de l'enveloppe brute...")
+
+    print(" -> Extraction de l'enveloppe...")
     envelope_raw = np.abs(samples_if)
-    
-    print(" -> Filtrage Passe-Bas de l'enveloppe (3000 Hz)...")
 
-    sos_env = butter(4, 3000 / (rate / 2), btype='low', output='sos')
+    print(" -> Lissage de l'enveloppe...")
+    cutoff_env = 10000  # 10 kHz, mieux pour garder les impulsions rapides
+    sos_env = butter(
+        4,
+        cutoff_env / (rate / 2),
+        btype="low",
+        output="sos"
+    )
     envelope = sosfiltfilt(sos_env, envelope_raw)
+
+    print(" -> Détection des pics PD...")
+
+    noise_level = np.median(envelope)
+    noise_std = np.std(envelope)
+
+    threshold = noise_level + 4 * noise_std
     
-    print(" -> Formatage du PRPD (256 échantillons/période)...")
+    threshold = threshold/3
+    print("Threshold == ", threshold)
+
+    min_distance = int(200e-6 * rate)
+
+    peaks, properties = find_peaks(
+        envelope,
+        height=threshold,
+        distance=min_distance
+    )
+
+    print(f" -> Nombre de pics détectés : {len(peaks)}")
+
+    if len(peaks) == 0:
+        return np.array([]), np.array([])
+
     f_ref = 50.0
-    samples_per_period = int(rate / f_ref)
-    N_periods = N // samples_per_period
-    
-    phases_detected = []
-    amps_detected = []
-    
-    for p in range(N_periods):
-        start = p * samples_per_period
-        end = start + samples_per_period
-        period_env = envelope[start:end]
-        
 
-        chunks = np.array_split(period_env, 256)
-        chunk_maxes = [np.max(chunk) for chunk in chunks]
-        amps_detected.extend(chunk_maxes)
+    phases_detected = (360.0 * f_ref * peaks / rate) % 360.0
+    amps_detected = envelope[peaks]
 
-    phases_detected = np.tile(np.linspace(0, 360, 256, endpoint=False), N_periods)
-    amps_detected = np.array(amps_detected)
-    
+    amps_db = 20 * np.log10(np.clip(amps_detected, 1e-12, None))
+
+    print(f" -> Terminé. Nombre total de points PRPD : {len(phases_detected)}")
+
+    return phases_detected, amps_db
 
 
-    amps_dbm = 20 * np.log10(np.clip(amps_detected, 1e-12, None))
-    
-    print(f" -> Terminé. Nombre total de points générés pour le PRPD : {len(phases_detected)}")
-    
-    return phases_detected, amps_dbm
+
 
 def Plot_PRPD(phases_detected, amps_dbm, name=""):
     """
@@ -248,67 +274,165 @@ def Plot_PRPD(phases_detected, amps_dbm, name=""):
     plt.show()
 
 
-def main():
-    f_low = 10e6 - 1000000
-    f_hight = 10e6 + 1000000
-    print("Initializing USRP...")
 
+def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0, rx_chan=0):
+
+    tx_signal = tx_signal.astype(np.complex64)
+
+    max_amp = np.max(np.abs(tx_signal))
+    if max_amp > 0:
+        tx_signal = 0.5 * tx_signal / max_amp
+
+    usrp.set_tx_rate(rate, tx_chan)
+    usrp.set_rx_rate(rate, rx_chan)
+
+    usrp.set_tx_freq(freq, tx_chan)
+    usrp.set_rx_freq(freq, rx_chan)
+
+    usrp.set_tx_gain(tx_gain, tx_chan)
+    usrp.set_rx_gain(rx_gain, rx_chan)
+
+    usrp.set_tx_antenna("TX/RX", tx_chan)
+    usrp.set_rx_antenna("RX2", rx_chan)
+
+    st_args_rx = uhd.usrp.StreamArgs("fc32", "sc16")
+    st_args_rx.channels = [rx_chan]
+    rx_streamer = usrp.get_rx_stream(st_args_rx)
+
+    st_args_tx = uhd.usrp.StreamArgs("fc32", "sc16")
+    st_args_tx.channels = [tx_chan]
+    tx_streamer = usrp.get_tx_stream(st_args_tx)
+
+    num_samps = len(tx_signal)
+    received = np.zeros(num_samps, dtype=np.complex64)
+
+    rx_md = uhd.types.RXMetadata()
+    tx_md = uhd.types.TXMetadata()
+
+    stop_rx = False
+
+    def rx_worker():
+        nonlocal stop_rx
+
+        stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
+        stream_cmd.stream_now = True
+        rx_streamer.issue_stream_cmd(stream_cmd)
+
+        total = 0
+        buff = np.zeros((1, 4096), dtype=np.complex64)
+
+        while total < num_samps and not stop_rx:
+            n = rx_streamer.recv(buff, rx_md, timeout=2.0)
+
+            if rx_md.error_code != uhd.types.RXMetadataErrorCode.none:
+                print("RX error:", rx_md.strerror())
+                continue
+
+            end = min(total + n, num_samps)
+            received[total:end] = buff[0, :end-total]
+            total = end
+
+        stop_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.stop_cont)
+        rx_streamer.issue_stream_cmd(stop_cmd)
+
+        print(f"RX reçu : {total} samples")
+
+    rx_thread = threading.Thread(target=rx_worker)
+    rx_thread.start()
+
+    time.sleep(0.1)
+
+    tx_md.start_of_burst = True
+    tx_md.end_of_burst = False
+
+    chunk_size = 4096
+    sent_total = 0
+
+    for i in range(0, num_samps, chunk_size):
+        chunk = tx_signal[i:i+chunk_size]
+
+        if i + chunk_size >= num_samps:
+            tx_md.end_of_burst = True
+
+        sent = tx_streamer.send(chunk, tx_md)
+        sent_total += sent
+        tx_md.start_of_burst = False
+
+    stop_rx = True
+    rx_thread.join()
+
+    print(f"TX envoyé : {sent_total} samples")
+
+    return received
+
+def main():
+    print("Initializing USRP...")
     usrp = uhd.usrp.MultiUSRP()
 
     num_samps = int(DURATION * RATE)
 
-    print(f"Receiving {num_samps} samples...")
-    samples = usrp.recv_num_samps(
+    print("\n--- SIMULATION PD ---")
+    F_OFFSET = 5e6
+
+    pd_simulated = Simulate_PD_Signal(
         num_samps,
-        FREQ,
         RATE,
-        [CHANNEL],
-        GAIN
+        f_offset=F_OFFSET
     )
 
-    if samples.ndim == 2:
-        samples = samples[0]
-
-    print(f"Received {len(samples)} samples")
-    print(type(samples))
-
-
-    print("\n--- DEBUT: SIMULATION & TRAITEMENT DP ---")
-    F_OFFSET = 10e6
+    noise_power = 0.025
     
-
-    print("Génération de Décharges Partielles simulées...")
-    pd_simulated = Simulate_PD_Signal(len(samples), RATE, f_offset=F_OFFSET)
+    noise = (
+        np.random.normal(0, noise_power, len(pd_simulated)) +
+        1j * np.random.normal(0, noise_power, len(pd_simulated))
+    )
     
-
-    samples_with_pd = samples + pd_simulated
-
-    phases_detected, amps_dbm = Process_PD_Signal(samples_with_pd, RATE, f_offset=F_OFFSET)
-
-    Plot_PRPD(phases_detected, amps_dbm, name="_simulation_b200")
-    print("--- FIN: SIMULATION & TRAITEMENT DP ---\n")
+    # pd_noisy = pd_simulated + noise
+    f_noise = 4e6
     
-
-    # # Plot signal Brute
-    # freqs, psd_db = Freq_domain_gr_blocks(samples, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    # _, _ = Freq_domain_gr_blocks(pd_simulated, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    # _, _ = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    # Time_domain_gr(pd_simulated, RATE)
+    t = np.arange(len(pd_simulated)) / RATE
     
-    # # Band pass in time
-    # filtred_signal = Bandpass_filter_inTimeDomain(samples, f_low, f_hight, RATE)
-    # Time_domain_gr(filtred_signal, RATE, name = "_bandpass")
-
-    # # Plot bandpass time signal
-    # freqs_filter, psd_db_filter = Freq_domain_gr_blocks(filtred_signal, RATE, FREQ, NFFT, f_plot_low=f_low+FREQ, f_plot_high=f_hight+FREQ, name = "_bandpass")
-
-    # # band pass in freq
-    # filtred_signal_by_freq = Bandpass_complex_inFreqDomain(samples, RATE, f_low, f_hight)
-    # Time_domain_gr(filtred_signal_by_freq, RATE, name = "_bandpass_by_freq")
-
-    # # Plot bandpass frq Signal
-    # freqs_filter_by_freq, psd_db_filter_by_freq = Freq_domain_gr_blocks(filtred_signal_by_freq, RATE, FREQ, NFFT, f_plot_low=f_low+FREQ, f_plot_high=f_hight+FREQ, name = "_bandpass_by_freq")
+    rf_noise = 0.002 * np.exp(1j * 2 * np.pi * f_noise * t)
     
+    pd_noisy = pd_simulated + rf_noise + noise
+    drift = 0.001 * np.sin(2*np.pi*5*t)
+    
+    pd_noisy += drift
+    # pd_simulated = pd_simulated * 0
+    print("\n--- TX puis RX ---")
+    rx_signal = tx_rx_loopback(
+        usrp=usrp,
+        tx_signal=pd_noisy,
+        freq=FREQ,
+        rate=RATE,
+        tx_gain=0,
+        rx_gain=30,
+        tx_chan=0,
+        rx_chan=0
+    )
+
+    print("\n--- TRAITEMENT PRPD SUR SIGNAL REÇU ---")
+    phases_detected, amps_dbm = Process_PD_Signal(
+        rx_signal,
+        RATE,
+        f_offset=F_OFFSET
+    )
+
+    if len(amps_dbm) > 0:
+        Plot_PRPD(phases_detected, amps_dbm, name="_tx_rx_b200")
+    else:
+        print("Pas assez de samples RX pour tracer le PRPD.")
+
+    Freq_domain_gr_blocks(
+        rx_signal,
+        RATE,
+        FREQ,
+        NFFT,
+        name="_rx_signal"
+    )
+
+    Time_domain_gr(pd_noisy, RATE)
+    print("--- FIN ---")
     
 
 if __name__ == "__main__":

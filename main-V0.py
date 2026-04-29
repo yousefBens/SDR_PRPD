@@ -8,8 +8,8 @@ import os
 # =======================
 # CONFIGURATION
 # =======================
-FREQ = 200e6
-RATE = 32e6
+FREQ = 100e6
+RATE = 10e6
 DURATION = 1.0
 GAIN = 50
 CHANNEL = 0
@@ -152,7 +152,7 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
     tp = np.arange(pulse_len) / rate
     
     for idx in event_indices:
-        A = rng.uniform(0.001, 0.02)
+        A = rng.uniform(0.0015, 0.041)
         # Utilisation de f_offset pour décaler la PD en IQ Baseband (SDR)
         pulse = A * np.exp(-tp / tau) * np.exp(1j * 2 * np.pi * f_offset * tp)
         
@@ -278,7 +278,7 @@ def main():
     # INJECTION ET SYNCHRONISATION PRPD (NOUVEAU)
     # ========================================================
     print("\n--- DEBUT: SIMULATION & TRAITEMENT DP ---")
-    F_OFFSET = 10e6
+    F_OFFSET = 1e6
     
     # 1. On génère numériquement un vecteur signal de défaut (DP)
     print("Génération de Décharges Partielles simulées...")
