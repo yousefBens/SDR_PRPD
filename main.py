@@ -9,11 +9,13 @@ import time
 
 
 FREQ = 100e6
-RATE = 32e6
+RATE = 10e6
 DURATION = 1.0
 GAIN = 50
 CHANNEL = 0
 NFFT = 1024
+
+
 
 def Time_domain_gr(samples, rate, name = ""):
     t = np.arange(0, DURATION, 1/rate)
@@ -365,6 +367,64 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
 
     return received
 
+
+def Find_PD_Band(samples, rate, band_width=1e6, step=500e3):
+    """
+    Cherche automatiquement la bande fréquentielle où les impulsions PD sont les plus visibles.
+    Retourne le meilleur f_offset.
+    """
+
+    offsets = np.arange(-rate/2 + band_width, rate/2 - band_width, step)
+
+    best_score = -np.inf
+    best_offset = None
+
+    for f_offset in offsets:
+        N = len(samples)
+        t = np.arange(N) / rate
+
+        # Translation de la bande testée vers 0 Hz
+        x = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
+
+        # Filtre passe-bas sur la bande testée
+        cutoff = band_width / 2
+        sos = butter(
+            4,
+            cutoff / (rate / 2),
+            btype="low",
+            output="sos"
+        )
+
+        x_filt = sosfiltfilt(sos, x)
+
+        # Enveloppe
+        env = np.abs(x_filt)
+
+        # Score impulsionnel
+        noise = np.median(env)
+        sigma = np.std(env)
+        threshold = noise + 4 * sigma
+
+        peaks, _ = find_peaks(
+            env,
+            height=threshold,
+            distance=int(10e-6 * rate)
+        )
+        print("Len picks == ", len(peaks))
+        if len(peaks) == 0:
+            score = 0
+        else:
+            score = len(peaks) * np.mean(env[peaks]) / (noise + 1e-12)
+
+        if score > best_score:
+            best_score = score
+            best_offset = f_offset
+
+    print(f"Meilleure bande trouvée autour de f_offset = {best_offset/1e6:.3f} MHz")
+    print(f"Score = {best_score:.2f}")
+
+    return best_offset
+
 def main():
     print("Initializing USRP...")
     usrp = uhd.usrp.MultiUSRP()
@@ -372,7 +432,7 @@ def main():
     num_samps = int(DURATION * RATE)
 
     print("\n--- SIMULATION PD ---")
-    F_OFFSET = 5e6
+    F_OFFSET = 2e6
 
     pd_simulated = Simulate_PD_Signal(
         num_samps,
@@ -380,7 +440,7 @@ def main():
         f_offset=F_OFFSET
     )
 
-    noise_power = 0.025
+    noise_power = 0.0025
     
     noise = (
         np.random.normal(0, noise_power, len(pd_simulated)) +
@@ -399,6 +459,7 @@ def main():
     
     pd_noisy += drift
     # pd_simulated = pd_simulated * 0
+
     print("\n--- TX puis RX ---")
     rx_signal = tx_rx_loopback(
         usrp=usrp,
@@ -410,13 +471,23 @@ def main():
         tx_chan=0,
         rx_chan=0
     )
+    
+    best_offset = Find_PD_Band(rx_signal, RATE, step=300e3)
 
-    print("\n--- TRAITEMENT PRPD SUR SIGNAL REÇU ---")
+    print("Best offsets ====== ", best_offset)
+    
     phases_detected, amps_dbm = Process_PD_Signal(
         rx_signal,
         RATE,
-        f_offset=F_OFFSET
+        f_offset=best_offset
     )
+    
+    print("\n--- TRAITEMENT PRPD SUR SIGNAL REÇU ---")
+    # phases_detected, amps_dbm = Process_PD_Signal(
+    #     rx_signal,
+    #     RATE,
+    #     f_offset=F_OFFSET
+    # )
 
     if len(amps_dbm) > 0:
         Plot_PRPD(phases_detected, amps_dbm, name="_tx_rx_b200")
@@ -432,7 +503,7 @@ def main():
     )
 
     Time_domain_gr(pd_noisy, RATE)
-    print("--- FIN ---")
+
     
 
 if __name__ == "__main__":
