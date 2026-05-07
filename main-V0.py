@@ -8,11 +8,12 @@ import os
 # =======================
 # CONFIGURATION
 # =======================
-FREQ = 100e6
-RATE = 10e6
+FREQ = 300e6
+RATE = 30e6
 DURATION = 1.0
 GAIN = 50
-CHANNEL = 0
+CHANNEL0 = 0
+CHANNEL1 = 1
 NFFT = 1024
 
 def Time_domain_gr(samples, rate, name = ""):
@@ -260,16 +261,18 @@ def main():
     num_samps = int(DURATION * RATE)
 
     print(f"Receiving {num_samps} samples...")
-    samples = usrp.recv_num_samps(
+    samples_2dim = usrp.recv_num_samps(
         num_samps,
         FREQ,
         RATE,
-        [CHANNEL],
+        [CHANNEL0, CHANNEL1],
         GAIN
     )
 
-    if samples.ndim == 2:
-        samples = samples[0]
+    print("Sample ndim ========= ", samples_2dim.ndim)
+    if samples_2dim.ndim == 2:
+        samples = samples_2dim[0]
+        samples_p = samples_2dim[1]
 
     print(f"Received {len(samples)} samples")
     print(type(samples))
@@ -282,24 +285,25 @@ def main():
     
     # 1. On génère numériquement un vecteur signal de défaut (DP)
     print("Génération de Décharges Partielles simulées...")
-    pd_simulated = Simulate_PD_Signal(len(samples), RATE, f_offset=F_OFFSET)
+    # pd_simulated = Simulate_PD_Signal(len(samples), RATE, f_offset=F_OFFSET)
     
     # 2. On ajoute ça directement aux "samples" réels reçus de l'antenne SDR
-    samples_with_pd = samples + pd_simulated
+    # samples_with_pd = samples + pd_simulated
     
     # 3. DSP (Digital Signal Processing) de l'extraction
-    envelope, peaks, properties = Process_PD_Signal(samples_with_pd, RATE, f_offset=F_OFFSET)
+    # envelope, peaks, properties = Process_PD_Signal(samples_with_pd, RATE, f_offset=F_OFFSET)
     
     # 4. Affichage du Diagramme PRPD
-    Plot_PRPD(peaks, properties, RATE, len(samples_with_pd), name="_simulation_b200")
+    # Plot_PRPD(peaks, properties, RATE, len(samples_with_pd), name="_simulation_b200")
     print("--- FIN: SIMULATION & TRAITEMENT DP ---\n")
     
 
     # Plot signal Brute
     freqs, psd_db = Freq_domain_gr_blocks(samples, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    _, _ = Freq_domain_gr_blocks(pd_simulated, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    _, _ = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    Time_domain_gr(pd_simulated, RATE)
+    _, _ = Freq_domain_gr_blocks(samples_p, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "_Second_Channel")
+    # _, _ = Freq_domain_gr_blocks(pd_simulated, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
+    # _, _ = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
+    # Time_domain_gr(pd_simulated, RATE)
     
     # # Band pass in time
     # filtred_signal = Bandpass_filter_inTimeDomain(samples, f_low, f_hight, RATE)

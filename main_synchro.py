@@ -160,7 +160,7 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
 
     return pd_signal
 
-def Process_PD_Signal(samples, rate, f_offset=10e6):
+def Process_PD_Signal(samples, rate, t_start=0.0, f_offset=10e6):
     """
     Traite le signal reçu SDR pour générer un PRPD propre :
     1) translation vers 0 Hz
@@ -224,7 +224,19 @@ def Process_PD_Signal(samples, rate, f_offset=10e6):
 
     f_ref = 50.0
 
-    phases_detected = (360.0 * f_ref * peaks / rate) % 360.0
+    # --- NOUVEAU CALCUL DE PHASE AVEC PPS ---
+    # Le temps absolu de chaque pic
+    t_peaks = t_start + (peaks / rate)
+    
+    # On isole la fraction de seconde (ex: 1.145 -> 0.145)
+    time_fraction = t_peaks % 1.0
+    
+    # On trouve la position dans le cycle de 20 ms
+    cycle_time = time_fraction % 0.02
+    
+    # Conversion en degrés
+    phases_detected = (cycle_time / 0.02) * 360.0
+
     amps_detected = envelope[peaks]
 
     amps_db = 20 * np.log10(np.clip(amps_detected, 1e-12, None))
@@ -312,9 +324,10 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
     tx_md = uhd.types.TXMetadata()
 
     stop_rx = False
+    t_start = 0.0
 
     def rx_worker():
-        nonlocal stop_rx
+        nonlocal stop_rx, t_start
 
         stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
         stream_cmd.stream_now = True
@@ -322,6 +335,7 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
 
         total = 0
         buff = np.zeros((1, 4096), dtype=np.complex64)
+        first_packet = True
 
         while total < num_samps and not stop_rx:
             n = rx_streamer.recv(buff, rx_md, timeout=2.0)
@@ -329,6 +343,10 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
             if rx_md.error_code != uhd.types.RXMetadataErrorCode.none:
                 print("RX error:", rx_md.strerror())
                 continue
+                
+            if first_packet:
+                t_start = rx_md.time_spec.get_real_secs()
+                first_packet = False
 
             end = min(total + n, num_samps)
             received[total:end] = buff[0, :end-total]
@@ -337,7 +355,7 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
         stop_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.stop_cont)
         rx_streamer.issue_stream_cmd(stop_cmd)
 
-        print(f"RX reçu : {total} samples")
+        print(f"RX reçu : {total} samples (Timestamp initial absolu: {t_start:.6f} s)")
 
     rx_thread = threading.Thread(target=rx_worker)
     rx_thread.start()
@@ -346,6 +364,7 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
 
     tx_md.start_of_burst = True
     tx_md.end_of_burst = False
+    tx_md.has_time_spec = False
 
     chunk_size = 4096
     sent_total = 0
@@ -365,7 +384,7 @@ def tx_rx_loopback(usrp, tx_signal, freq, rate, tx_gain=0, rx_gain=20, tx_chan=0
 
     print(f"TX envoyé : {sent_total} samples")
 
-    return received
+    return received, t_start
 
 
 def Find_PD_Band(samples, rate, band_width=1e6, step=500e3):
@@ -429,6 +448,22 @@ def main():
     print("Initializing USRP...")
     usrp = uhd.usrp.MultiUSRP()
 
+    print("\n--- 1. SYNCHRONISATION PPS ---")
+    usrp.set_time_source("external")
+    print("En attente de la première impulsion (1 Hz) de votre générateur...")
+    print("=> ALLUMEZ LE GÉNÉRATEUR CONNECTÉ SUR PPS/TRIG ! <=")
+    time_last = usrp.get_time_last_pps().get_real_secs()
+    while True:
+        time_curr = usrp.get_time_last_pps().get_real_secs()
+        if time_curr != time_last:
+            print("   -> Impulsion PPS détectée !")
+            break
+        time.sleep(0.1)
+    
+    usrp.set_time_next_pps(uhd.types.TimeSpec(0.0))
+    time.sleep(1.2)
+    print(f"Synchronisation réussie ! Temps actuel SDR : {usrp.get_time_now().get_real_secs():.4f} s")
+
     num_samps = int(DURATION * RATE)
 
     print("\n--- SIMULATION PD ---")
@@ -461,7 +496,7 @@ def main():
     # pd_simulated = pd_simulated * 0
 
     print("\n--- TX puis RX ---")
-    rx_signal = tx_rx_loopback(
+    rx_signal, t_start = tx_rx_loopback(
         usrp=usrp,
         tx_signal=pd_noisy,
         freq=FREQ,
@@ -486,6 +521,7 @@ def main():
     phases_detected, amps_dbm = Process_PD_Signal(
         rx_signal,
         RATE,
+        t_start=t_start,
         f_offset=F_OFFSET
     )
 
