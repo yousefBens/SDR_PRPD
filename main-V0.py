@@ -8,7 +8,7 @@ import os
 # =======================
 # CONFIGURATION
 # =======================
-FREQ = 300e6
+FREQ = 100e6
 RATE = 30e6
 DURATION = 1.0
 GAIN = 50
@@ -125,8 +125,8 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
     phase_ref = (360.0 * f_ref * t) % 360.0
     
     prob_pd = (
-        0.1 * gaussian_phase(phase_ref, 60, 12) +
-        0.01 * gaussian_phase(phase_ref, 240, 15)
+        0.8 * gaussian_phase(phase_ref, 60, 12) +
+        0.7 * gaussian_phase(phase_ref, 240, 15)
     )
     prob_pd = prob_pd / np.max(prob_pd)
     
@@ -135,7 +135,7 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
     p_global = 0.01 * prob_pd
     candidats = np.where(rng.random(num_samps) < p_global)[0]
     
-    min_gap_samples = int(0.0002 * rate)
+    min_gap_samples = int(200e-6 * rate)
     
     event_indices = []
     last_idx = -min_gap_samples
@@ -153,7 +153,7 @@ def Simulate_PD_Signal(num_samps, rate, f_offset=10e6):
     tp = np.arange(pulse_len) / rate
     
     for idx in event_indices:
-        A = rng.uniform(0.0015, 0.041)
+        A = rng.uniform(0.005, 0.04)
         # Utilisation de f_offset pour décaler la PD en IQ Baseband (SDR)
         pulse = A * np.exp(-tp / tau) * np.exp(1j * 2 * np.pi * f_offset * tp)
         
@@ -281,26 +281,26 @@ def main():
     # INJECTION ET SYNCHRONISATION PRPD (NOUVEAU)
     # ========================================================
     print("\n--- DEBUT: SIMULATION & TRAITEMENT DP ---")
-    F_OFFSET = 1e6
+    F_OFFSET = 5e6
     
     # 1. On génère numériquement un vecteur signal de défaut (DP)
     print("Génération de Décharges Partielles simulées...")
-    # pd_simulated = Simulate_PD_Signal(len(samples), RATE, f_offset=F_OFFSET)
+    pd_simulated = Simulate_PD_Signal(len(samples), RATE, f_offset=F_OFFSET)
     
     # 2. On ajoute ça directement aux "samples" réels reçus de l'antenne SDR
-    # samples_with_pd = samples + pd_simulated
+    samples_with_pd = samples + pd_simulated
     
     # 3. DSP (Digital Signal Processing) de l'extraction
-    # envelope, peaks, properties = Process_PD_Signal(samples_with_pd, RATE, f_offset=F_OFFSET)
+    envelope, peaks, properties = Process_PD_Signal(samples_with_pd, RATE, f_offset=F_OFFSET)
     
     # 4. Affichage du Diagramme PRPD
-    # Plot_PRPD(peaks, properties, RATE, len(samples_with_pd), name="_simulation_b200")
+    Plot_PRPD(peaks, properties, RATE, len(samples_with_pd), name="_simulation_b200")
     print("--- FIN: SIMULATION & TRAITEMENT DP ---\n")
     
 
     # Plot signal Brute
-    freqs, psd_db = Freq_domain_gr_blocks(samples, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
-    _, _ = Freq_domain_gr_blocks(samples_p, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "_Second_Channel")
+    freqs, psd_db = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
+    # _, _ = Freq_domain_gr_blocks(samples_p, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "_Second_Channel")
     # _, _ = Freq_domain_gr_blocks(pd_simulated, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
     # _, _ = Freq_domain_gr_blocks(samples_with_pd, RATE, FREQ, NFFT, f_plot_low=None, f_plot_high=None, name = "")
     # Time_domain_gr(pd_simulated, RATE)
