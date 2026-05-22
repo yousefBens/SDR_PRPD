@@ -6,9 +6,9 @@ import threading
 import time
 import os
 
-NFFT = 1024
-FREQ = 4e9
-RATE = 10e6
+NFFT = 4096
+FREQ = 1e9 - 2e6
+RATE = 30e6
 DURATION = 0.5
 
 os.makedirs("./Main_figs", exist_ok=True)
@@ -109,7 +109,7 @@ def Process_PD_Signal(samples, rate, t_start=0.0, f_offset=10e6, R=50):
     return phases_detected, amps_db, amps_dbm
 
 
-def Plot_PRPD_Multiple(acquisitions, name="", ylabel="Amplitude (dB)"):
+def Plot_PRPD_Multiple(acquisitions, name="", ylabel="Amplitude (dBm)"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
     colors = ["blue", "red", "green", "orange", "purple"]

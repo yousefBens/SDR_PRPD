@@ -9,7 +9,7 @@ import time
 
 
 FREQ = 100e6
-RATE = 30e6
+RATE = 40e6
 DURATION = 1.0
 GAIN = 50
 CHANNEL = 0
