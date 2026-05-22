@@ -371,7 +371,7 @@ def main():
 
     s_time = time.time()
 
-    for i in range(1):
+    for i in range(5):
         print(f"--- Acquisition {i + 1}/1 ---")
 
         delay = np.random.uniform(0.01, 0.05)

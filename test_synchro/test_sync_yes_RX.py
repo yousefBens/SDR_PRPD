@@ -10,8 +10,8 @@ import os
 # =========================
 
 NFFT = 4096
-FREQ = 116e6
-RATE = 38e6
+FREQ = 100e6
+RATE = 10e6
 DURATION = 0.5
 GAIN = 0
 CHANNEL = 0
@@ -361,11 +361,11 @@ def main():
             print("Acquisition vide.")
             continue
 
-        plot_time_domain(
-            rx_signal,
-            RATE,
-            name=f"Time_domain_rx_{i + 1}"
-        )
+        # plot_time_domain(
+        #     rx_signal,
+        #     RATE,
+        #     name=f"Time_domain_rx_{i + 1}"
+        # )
 
         freqs, psd_dbm = compute_spectrum_dbm_per_bin(
             rx_signal,
@@ -382,15 +382,15 @@ def main():
             name=f"Spectrum_dBm_bin_rx_{i + 1}"
         )
 
-        phases, amps_dbm = process_pd_signal_dbm(
-            rx_signal,
-            RATE,
-            t_start=t_start,
-            f_offset=F_OFFSET,
-            R=R
-        )
+        # phases, amps_dbm = process_pd_signal_dbm(
+        #     rx_signal,
+        #     RATE,
+        #     t_start=t_start,
+        #     f_offset=F_OFFSET,
+        #     R=R
+        # )
 
-        print(f"Nombre de pulses détectés : {len(phases)}")
+        # print(f"Nombre de pulses détectés : {len(phases)}")
 
         acquisitions.append((phases, amps_dbm))
 

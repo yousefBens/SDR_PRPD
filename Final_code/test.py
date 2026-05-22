@@ -9,28 +9,33 @@ import os
 # =========================
 
 F_START = 100e6
-F_STOP = 0.2e9
+F_STOP = 2.0e9   # Corrigé : 2.0 GHz (2.0e9) au lieu de 200 MHz (0.2e9)
 
-RATE = 38e6
-GAIN = 0
+RATE = 30e6      # 30 MHz est plus stable sur B200 en USB 3 (38 MHz peut créer des drops)
+GAIN = 40        # Gain de 40 dB pour capter les signaux réels de l'antenne
 CHANNEL = 0
 ANTENNA = "RX2"
 
 NFFT = 4096
 
-DURATION_PER_STEP = 0.2
-SETTLE_TIME = 0.02
+DURATION_PER_STEP = 0.05 # 50 ms est amplement suffisant (donne environ 350 blocs FFT par palier)
+SETTLE_TIME = 0.05       # Laisser 50 ms à l'oscillateur pour se stabiliser après chaque saut
 
-OVERLAP = 0
+OVERLAP = 0.20           # 20% de recouvrement pour combler les bords
 STEP_FREQ = RATE * (1 - OVERLAP)
 
-EDGE_MARGIN = 0.03
+EDGE_MARGIN = 0.10       # On coupe 10% de chaque bord (atténués par les filtres analogiques)
 
 OUTPUT_DIR = "./Main_figs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def compute_psd_blocks(samples, rate, freq_center, nfft=4096):
+# La fonction 'compute_psd_blocks' contenant des plt.show() dans une boucle a été supprimée
+# pour éviter de faire planter l'ordinateur avec des milliers de fenêtres matplotlib.
+
+
+
+def compute_psd_blocks_dbfs(samples, rate, freq_center, nfft=4096):
     samples = np.asarray(samples, dtype=np.complex64)
     samples = np.ravel(samples)
 
@@ -43,40 +48,7 @@ def compute_psd_blocks(samples, rate, freq_center, nfft=4096):
     blocks = samples.reshape(n_blocks, nfft)
 
     window = np.hanning(nfft)
-
-    psd_acc = np.zeros(nfft)
-
-    for blk in blocks:
-        X = np.fft.fftshift(np.fft.fft(blk * window, n=nfft))
-        plt.figure()
-        plt.plot(X)
-        plt.show()
-        P = (np.abs(X) ** 2) / (nfft)
-        psd_acc += P
-
-    psd_mean = psd_acc / n_blocks
-    psd_db = 10 * np.log10(psd_mean + 1e-20)
-
-    freqs = np.fft.fftshift(np.fft.fftfreq(nfft, d=1 / rate))
-    freqs = freqs + freq_center
-
-    return freqs, psd_db
-
-
-
-def compute_psd_blocks_dbm(samples, rate, freq_center, nfft=4096, R=50):
-    samples = np.asarray(samples, dtype=np.complex64)
-    samples = np.ravel(samples)
-
-    n_blocks = len(samples) // nfft
-
-    if n_blocks == 0:
-        return np.array([]), np.array([])
-
-    samples = samples[:n_blocks * nfft]
-    blocks = samples.reshape(n_blocks, nfft)
-
-    window = np.hanning(nfft)
+    S_w = np.sum(window)
 
     psd_acc = np.zeros(nfft)
 
@@ -87,24 +59,22 @@ def compute_psd_blocks_dbm(samples, rate, freq_center, nfft=4096, R=50):
             np.fft.fft(blk * window, n=nfft)
         )
 
-        
-        # amplitude RMS par bin
-        Vrms = np.abs(X) / (nfft * np.sqrt(2))
+        # Normalisation par rapport au gain de la fenêtre
+        # Un sinus complexe pleine échelle (amplitude 1.0) donnera 0 dBFS
+        P_norm = (np.abs(X) / S_w) ** 2
 
-        # puissance électrique
-        P_w = (Vrms ** 2) / R
-
-        psd_acc += P_w
-        
-        # plt.figure()
-        # plt.plot(psd_acc)
-        # plt.show()
+        psd_acc += P_norm
 
     psd_mean = psd_acc / n_blocks
 
-    # conversion dBm
-    psd_dbm = 10 * np.log10(
-        np.clip(psd_mean / 1e-3, 1e-20, None)
+    # --- SUPPRESSION DU PIC CENTRAL (DC OFFSET / LO LEAKAGE) ---
+    center_idx = nfft // 2
+    if center_idx > 0 and center_idx < nfft - 1:
+        psd_mean[center_idx] = (psd_mean[center_idx - 1] + psd_mean[center_idx + 1]) / 2.0
+
+    # conversion dBFS
+    psd_dbfs = 10 * np.log10(
+        np.clip(psd_mean, 1e-20, None)
     )
 
     freqs = np.fft.fftshift(
@@ -113,7 +83,7 @@ def compute_psd_blocks_dbm(samples, rate, freq_center, nfft=4096, R=50):
 
     freqs = freqs + freq_center
 
-    return freqs, psd_dbm
+    return freqs, psd_dbfs
 
 def capture_fast(usrp, freq_center, rate, duration, gain):
     num_samps = int(rate * duration)
@@ -154,6 +124,7 @@ def sweep_spectrum():
     usrp.set_rx_rate(RATE, CHANNEL)
     usrp.set_rx_gain(GAIN, CHANNEL)
     usrp.set_rx_antenna(ANTENNA, CHANNEL)
+    usrp.set_rx_dc_offset(True, CHANNEL) # Activation de la correction DC matérielle
 
     centers = build_centers()
 
@@ -172,7 +143,7 @@ def sweep_spectrum():
                 GAIN
             )
 
-            freqs, psd_db = compute_psd_blocks_dbm(
+            freqs, psd_db = compute_psd_blocks_dbfs(
                 samples,
                 RATE,
                 fc,
@@ -221,7 +192,7 @@ def plot_spectrum(freqs, psd_db):
         f"Sweep SDR : Spectre de {F_START / 1e6:.0f} MHz à {F_STOP / 1e6:.0f} MHz"
     )
     plt.xlabel("Fréquence (MHz)")
-    plt.ylabel("Puissance relative (dB)")
+    plt.ylabel("Puissance (dBFS)")
     plt.grid(True)
 
     plt.xlim(F_START / 1e6, F_STOP / 1e6)
