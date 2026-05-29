@@ -10,10 +10,10 @@ import os
 # =========================
 
 NFFT = 4096
-FREQ = 1850e6
-RATE = 38e6
-DURATION = 0.5
-GAIN = 0
+FREQ = 1199e6
+RATE = 50e6
+DURATION = 5
+GAIN = 20 # Gain externe
 CHANNEL = 0
 ANTENNA = "RX2"
 
@@ -23,7 +23,7 @@ EDGE = (RATE/2)*0.3
 R = 50
 
 # fréquence du signal utile par rapport au centre SDR
-F_OFFSET = 5e6
+F_OFFSET = 1e6
 
 N_ACQ = 1
 
@@ -390,7 +390,7 @@ def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
     noise_level = np.median(envelope)
     noise_std = np.std(envelope)
 
-    threshold = (noise_level + 4.0 * noise_std) / 3
+    threshold = (noise_level + 4.0 * noise_std) / 10
 
     min_distance = int(200e-6 * rate)
 
@@ -477,6 +477,7 @@ def plot_prpd(acquisitions, name="PRPD_dBm", unity = "dbm"):
     ax1.set_xlabel("Phase (degrés)")
     ax1.set_ylabel(f"Puissance impulsion approximative ({unity})")
     ax1.set_xlim(0, 360)
+    ax1.set_ylim(-100, -30)
     ax1.grid(True)
     ax1.legend(loc="best")
 
@@ -508,6 +509,23 @@ def sync_on_external_50hz_pps(usrp):
 
     usrp.set_time_next_pps(uhd.types.TimeSpec(0.0))
     time.sleep(0.05) # Le temps que le prochain front passe et remette à zéro
+
+
+def Time_domain_gr(samples, rate, name = ""):
+    t = np.arange(0, DURATION, 1/rate)
+    signal_50 = 0.1 * np.sin(2*np.pi*50*t)
+    alpha = int(len(t)/40)
+    plt.figure(figsize=(12, 5))
+    plt.plot(t[:alpha], np.real(samples)[:alpha], label = "Real part")
+    # plt.plot(t[:alpha], np.imag(samples)[:alpha], label = "Imag part")
+    plt.plot(t[:alpha], signal_50[:alpha], label = "Signal 50 Hz")
+    plt.title("Time Sink")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude (V)")
+    plt.legend()
+    plt.grid()
+    plt.savefig(f"./Main_figs/Time_domain_plot{name}.png")
+    plt.show()
 
 # =========================
 # MAIN
@@ -544,6 +562,7 @@ def main():
             print("Acquisition vide.")
             continue
 
+        Time_domain_gr(rx_signal, RATE, name = "")
         freqs, psd_dbm = compute_spectrum_dbm_per_bin(
             rx_signal,
             RATE,
@@ -563,11 +582,11 @@ def main():
             edge_guard_hz=EDGE
         )
         
-        plot_spectrum(
-            freqs,
-            psd_dbm,
-            name=f"Spectrum_dBm_bin_rx_{i + 1}"
-        )
+        # plot_spectrum(
+        #     freqs,
+        #     psd_dbm,
+        #     name=f"Spectrum_dBm_bin_rx_{i + 1}"
+        # )
         
         plot_spectrum(
             freqss,
@@ -597,10 +616,10 @@ def main():
 
     print(f"\nTemps total = {time.time() - t0:.2f} s")
 
-    plot_prpd(
-        acquisitions_dbm,
-        name="PRPD_dBm_approx"
-    )
+    # plot_prpd(
+    #     acquisitions_dbm,
+    #     name="PRPD_dBm_approx"
+    # )
     plot_prpd(
         acquisitions_dBFS,
         name="PRPD_dBFS_approx",

@@ -56,3 +56,7 @@ phases = (cycle_time / 0.02) * 360.0
 
 > [!NOTE]
 > La précision temporelle de ce calcul a été physiquement mesurée à environ **10 microsecondes** (soit une précision de **0.18 degré** d'angle sur l'onde). Cela garantit une résolution visuelle parfaite pour diagnostiquer la nature du défaut (couronne, particule libre, défaut d'isolant) sur le GIS.
+
+
+## Noteq :
+Durée de defaut 100 ns

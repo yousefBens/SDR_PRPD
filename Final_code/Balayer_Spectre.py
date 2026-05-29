@@ -8,17 +8,17 @@ import os
 # CONFIGURATION
 # =========================
 
-F_START = 100e6
-F_STOP = 3.0e9   # Corrigé : 2.0 GHz (2.0e9) au lieu de 200 MHz (0.2e9)
+F_START = 200e6
+F_STOP = 0.3e9   # Corrigé : 2.0 GHz (2.0e9) au lieu de 200 MHz (0.2e9)
 
 RATE = 30e6      # 30 MHz est plus stable sur B200 en USB 3 (38 MHz peut créer des drops)
-GAIN = 0        # Gain de 40 dB pour capter les signaux réels de l'antenne
+GAIN = 30        # Gain de 40 dB pour capter les signaux réels de l'antenne
 CHANNEL = 0
 ANTENNA = "RX2"
 
 NFFT = 4096
 
-DURATION_PER_STEP = 0.05 # 50 ms est amplement suffisant (donne environ 350 blocs FFT par palier)
+DURATION_PER_STEP = 0.5 # 50 ms est amplement suffisant (donne environ 350 blocs FFT par palier)
 SETTLE_TIME = 0.05       # Laisser 50 ms à l'oscillateur pour se stabiliser après chaque saut
 
 OVERLAP = 0.20           # 20% de recouvrement pour combler les bords
