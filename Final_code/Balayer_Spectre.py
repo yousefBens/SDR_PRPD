@@ -8,8 +8,8 @@ import os
 # CONFIGURATION
 # =========================
 
-F_START = 200e6
-F_STOP = 0.3e9   # Corrigé : 2.0 GHz (2.0e9) au lieu de 200 MHz (0.2e9)
+F_START = 100e6
+F_STOP = 2e9   # Corrigé : 2.0 GHz (2.0e9) au lieu de 200 MHz (0.2e9)
 
 RATE = 30e6      # 30 MHz est plus stable sur B200 en USB 3 (38 MHz peut créer des drops)
 GAIN = 30        # Gain de 40 dB pour capter les signaux réels de l'antenne

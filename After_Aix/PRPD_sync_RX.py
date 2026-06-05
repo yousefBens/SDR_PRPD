@@ -345,6 +345,8 @@ def process_pd_signal_dbm(samples, rate, t_start=0.0, f_offset=5e6, R=50):
 
     return phases, amps_dbm
 
+
+
 def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
     samples = np.asarray(samples, dtype=np.complex64).ravel()
     N = len(samples)
@@ -352,15 +354,14 @@ def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
     if N == 0 or t_start is None:
         return np.array([]), np.array([])
 
-    # suppression DC
     samples = samples - np.mean(samples)
 
     t = np.arange(N) / rate
 
-    # translation fréquentielle
-    samples_dc = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
+    # Translation vers DC
+    samples_bb = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
 
-    # filtre IF
+    # Filtrage autour du signal PD
     cutoff_if = 1e6
     sos_if = butter(
         4,
@@ -369,28 +370,15 @@ def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
         output="sos"
     )
 
-    samples_if = sosfiltfilt(sos_if, samples_dc)
+    samples_if = sosfiltfilt(sos_if, samples_bb)
 
-    # enveloppe
-    envelope_raw = np.abs(samples_if)
+    # Enveloppe
+    envelope = np.abs(samples_if)
 
-    # lissage enveloppe
-    cutoff_env = 10_000
-
-    sos_env = butter(
-        4,
-        cutoff_env / (rate / 2),
-        btype="low",
-        output="sos"
-    )
-
-    envelope = sosfiltfilt(sos_env, envelope_raw)
-
-    # détection pulses
+    # Seuil robuste
     noise_level = np.median(envelope)
     noise_std = np.std(envelope)
-
-    threshold = (noise_level + 4.0 * noise_std) / 10
+    threshold = noise_level + 4.0 * noise_std
 
     min_distance = int(200e-6 * rate)
 
@@ -403,89 +391,16 @@ def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
     if len(peaks) == 0:
         return np.array([]), np.array([])
 
-    # temps pulses
     t_peaks = t_start + peaks / rate
 
-    # phase PRPD
-    cycle_time = t_peaks % 0.02
-    phases = (cycle_time / 0.02) * 360.0
+    # PRPD 50 Hz
+    phases = ((t_peaks % 0.02) / 0.02) * 360.0
 
-    # amplitude pulses
     amps = envelope[peaks]
 
-    # =========================
-    # dBFS
-    # =========================
-    #
-    # Full Scale complexe UHD :
-    # max amplitude ~= 1.0
-    #
-    # dBFS = 20 log10(A / Afs)
-    #
-    # ici Afs = 1
-    #
-    amps_dbfs = 20 * np.log10(
-        np.clip(amps, 1e-12, None)
-    )
+    amps_dbfs = 20 * np.log10(np.clip(amps, 1e-12, None))
 
     return phases, amps_dbfs
-
-
-
-# def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
-#     samples = np.asarray(samples, dtype=np.complex64).ravel()
-#     N = len(samples)
-
-#     if N == 0 or t_start is None:
-#         return np.array([]), np.array([])
-
-#     samples = samples - np.mean(samples)
-
-#     t = np.arange(N) / rate
-
-#     # Translation vers DC
-#     samples_bb = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
-
-#     # Filtrage autour du signal PD
-#     cutoff_if = 1e6
-#     sos_if = butter(
-#         4,
-#         cutoff_if / (rate / 2),
-#         btype="low",
-#         output="sos"
-#     )
-
-#     samples_if = sosfiltfilt(sos_if, samples_bb)
-
-#     # Enveloppe
-#     envelope = np.abs(samples_if)
-
-#     # Seuil robuste
-#     noise_level = np.median(envelope)
-#     noise_std = np.std(envelope)
-#     threshold = noise_level + 4.0 * noise_std
-
-#     min_distance = int(200e-6 * rate)
-
-#     peaks, props = find_peaks(
-#         envelope,
-#         height=threshold,
-#         distance=min_distance
-#     )
-
-#     if len(peaks) == 0:
-#         return np.array([]), np.array([])
-
-#     t_peaks = t_start + peaks / rate
-
-#     # PRPD 50 Hz
-#     phases = ((t_peaks % 0.02) / 0.02) * 360.0
-
-#     amps = envelope[peaks]
-
-#     amps_dbfs = 20 * np.log10(np.clip(amps, 1e-12, None))
-
-#     return phases, amps_dbfs
     
 def plot_prpd(acquisitions, name="PRPD_dBm", unity = "dbm"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
