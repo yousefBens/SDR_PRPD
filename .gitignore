@@ -26,6 +26,7 @@ After_Aix/CAL2B_files/
 data/
 *.csv
 *.npy
+*.npz
 
 # Figures (optionnel si générées)
 #Main_figs/
