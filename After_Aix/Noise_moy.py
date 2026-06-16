@@ -10,9 +10,9 @@ import os
 # =========================
 
 NFFT = 4096
-FREQ = 1900e6
+FREQ = 106e6
 RATE = 12e6
-DURATION = 10
+DURATION = 3
 GAIN = 35
 CHANNEL = 0
 ANTENNA = "RX2"

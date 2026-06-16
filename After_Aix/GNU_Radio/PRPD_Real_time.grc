@@ -1,6 +1,6 @@
 options:
   parameters:
-    author: yousef
+    author: yousef BENSOUDANE
     catch_exceptions: 'True'
     category: '[GRC Hier Blocks]'
     cmake_opt: ''
@@ -22,7 +22,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: Not titled yet
+    title: CISTEME PRPD
     window_size: (1000,1000)
   states:
     bus_sink: false
@@ -117,7 +117,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [400, 200.0]
+    coordinate: [1288, 32.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -157,7 +157,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1096, 464.0]
+    coordinate: [928, 408.0]
     rotation: 0
     state: enabled
 - name: epy_block_0
@@ -175,11 +175,11 @@ blocks:
     affinity: ''
     alias: ''
     comment: ''
-    cutoff_if: 5e6
+    cutoff_if: 5.9e6
     f_offset: 5e6
     f_ref: '50'
     maxoutbuf: '0'
-    min_distance_us: '200'
+    min_distance_us: '10'
     minoutbuf: '0'
     phase_offset_deg: '0'
     samp_rate: samp_rate
@@ -195,7 +195,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [720, 484.0]
+    coordinate: [552, 428.0]
     rotation: 0
     state: enabled
 - name: qtgui_const_sink_x_0
@@ -249,7 +249,7 @@ blocks:
     marker7: '0'
     marker8: '0'
     marker9: '0'
-    name: '""'
+    name: '"PRPD"'
     nconnections: '1'
     size: 1024*pnt
     style1: '0'
@@ -287,7 +287,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1352, 384.0]
+    coordinate: [1184, 328.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
@@ -306,7 +306,7 @@ blocks:
     alpha8: '1.0'
     alpha9: '1.0'
     autoscale: 'False'
-    average: '1.0'
+    average: '0.1'
     axislabels: 'True'
     bw: samp_rate
     color1: '"blue"'
@@ -324,7 +324,7 @@ blocks:
     fc: freq_center
     fftsize: '32768'
     freqhalf: 'True'
-    grid: 'False'
+    grid: 'True'
     gui_hint: ''
     label: Relative Gain
     label1: ''
@@ -340,7 +340,7 @@ blocks:
     legend: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    name: '""'
+    name: '"Input Spectre"'
     nconnections: '1'
     norm_window: 'False'
     showports: 'False'
@@ -368,7 +368,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [704, 272.0]
+    coordinate: [536, 168.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
@@ -424,7 +424,7 @@ blocks:
     marker7: '-1'
     marker8: '-1'
     marker9: '-1'
-    name: '""'
+    name: '"Input in Time Domain"'
     nconnections: '1'
     size: 1024*pnt
     srate: samp_rate
@@ -465,9 +465,70 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [728, 368.0]
+    coordinate: [560, 312.0]
     rotation: 0
     state: enabled
+- name: qtgui_waterfall_sink_x_0
+  id: qtgui_waterfall_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '0'
+    color10: '0'
+    color2: '0'
+    color3: '0'
+    color4: '0'
+    color5: '0'
+    color6: '0'
+    color7: '0'
+    color8: '0'
+    color9: '0'
+    comment: ''
+    fc: freq_center
+    fftsize: '512'
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: ''
+    int_max: '10'
+    int_min: '-140'
+    label1: ''
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    nconnections: '1'
+    showports: 'False'
+    type: complex
+    update_time: '0.10'
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [880, 208.0]
+    rotation: 0
+    state: disabled
 - name: uhd_usrp_source_0
   id: uhd_usrp_source
   parameters:
@@ -901,7 +962,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [312, 352.0]
+    coordinate: [144, 292.0]
     rotation: 0
     state: enabled
 
@@ -912,6 +973,7 @@ connections:
 - [uhd_usrp_source_0, '0', epy_block_0, '0']
 - [uhd_usrp_source_0, '0', qtgui_freq_sink_x_0, '0']
 - [uhd_usrp_source_0, '0', qtgui_time_sink_x_0, '0']
+- [uhd_usrp_source_0, '0', qtgui_waterfall_sink_x_0, '0']
 
 metadata:
   file_format: 1

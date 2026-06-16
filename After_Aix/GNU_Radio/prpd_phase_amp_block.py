@@ -86,7 +86,7 @@ class blk(gr.basic_block):
         # =========================================================
         samples = np.asarray(input_items[0], dtype=np.complex64)
         N = len(samples)
-
+        # print(f"[Mon Bloc] Nombre de points reçus (N) = {N}")
         if N == 0:
             return produced
 

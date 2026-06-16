@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: Not titled yet
-# Author: yousef
+# Title: CISTEME PRPD
+# Author: yousef BENSOUDANE
 # GNU Radio version: 3.10.9.2
 
 from PyQt5 import Qt
@@ -32,9 +32,9 @@ import sip
 class PRPD_Real_time(gr.top_block, Qt.QWidget):
 
     def __init__(self):
-        gr.top_block.__init__(self, "Not titled yet", catch_exceptions=True)
+        gr.top_block.__init__(self, "CISTEME PRPD", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("Not titled yet")
+        self.setWindowTitle("CISTEME PRPD")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -108,7 +108,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
             (1024*pnt), #size
             samp_rate, #samp_rate
-            "", #name
+            "Input in Time Domain", #name
             1, #number of inputs
             None # parent
         )
@@ -161,7 +161,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
             window.WIN_BLACKMAN_hARRIS, #wintype
             freq_center, #fc
             samp_rate, #bw
-            "", #name
+            "Input Spectre", #name
             1,
             None # parent
         )
@@ -170,8 +170,8 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0.set_y_label('Relative Gain', 'dB')
         self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, 0.0, 0, "")
         self.qtgui_freq_sink_x_0.enable_autoscale(False)
-        self.qtgui_freq_sink_x_0.enable_grid(False)
-        self.qtgui_freq_sink_x_0.set_fft_average(1.0)
+        self.qtgui_freq_sink_x_0.enable_grid(True)
+        self.qtgui_freq_sink_x_0.set_fft_average(0.1)
         self.qtgui_freq_sink_x_0.enable_axis_labels(True)
         self.qtgui_freq_sink_x_0.enable_control_panel(False)
         self.qtgui_freq_sink_x_0.set_fft_window_normalized(False)
@@ -200,7 +200,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
         self.qtgui_const_sink_x_0 = qtgui.const_sink_c(
             (1024*pnt), #size
-            "", #name
+            "PRPD", #name
             1, #number of inputs
             None # parent
         )
@@ -242,7 +242,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self._freq_center_test_range = qtgui.Range(start_f, 2000e6-(samp_rate/2), ((2000e6-(samp_rate/2))-start_f)/1, start_f, 100)
         self._freq_center_test_win = qtgui.RangeWidget(self._freq_center_test_range, self.set_freq_center_test, "'freq_center_test'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._freq_center_test_win)
-        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, f_offset=5e6, t_start=1, f_ref=50, cutoff_if=5e6, threshold_factor=4, min_distance_us=200, phase_offset_deg=0)
+        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, f_offset=5e6, t_start=1, f_ref=50, cutoff_if=5.9e6, threshold_factor=4, min_distance_us=10, phase_offset_deg=0)
         self.blocks_float_to_complex_0 = blocks.float_to_complex(1)
 
 

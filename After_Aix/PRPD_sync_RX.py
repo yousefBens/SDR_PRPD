@@ -10,9 +10,9 @@ import os
 # =========================
 
 NFFT = 32768
-FREQ = 1975e6
-RATE = 30e6
-DURATION = 5
+FREQ = 1965e6
+RATE = 12e6
+DURATION = 3
 GAIN = 76 # Gain externe
 CHANNEL = 0
 ANTENNA = "RX2"
@@ -31,82 +31,6 @@ OUTPUT_DIR = "./Main_figs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def compute_spectrum_dbm_per_bin(
-        samples,
-        rate,
-        freq_center,
-        nfft=4096,
-        R=50,
-        remove_dc=True,
-        edge_guard_hz=0.5e6
-):
-    samples = np.asarray(samples, dtype=np.complex64).ravel()
-
-    if len(samples) < nfft:
-        return np.array([]), np.array([])
-
-    # suppression offset DC
-    if remove_dc:
-        samples = samples - np.mean(samples)
-
-    # garder seulement un multiple entier de nfft
-    n_blocks = len(samples) // nfft
-    samples = samples[:n_blocks * nfft]
-
-    # reshape en blocs FFT
-    blocks = samples.reshape(n_blocks, nfft)
-
-    # fenêtre
-    window = np.hanning(nfft)
-
-    # correction amplitude fenêtre
-    coherent_gain = np.sum(window) / nfft
-
-    p_acc = np.zeros(nfft)
-
-    for blk in blocks:
-
-        # appliquer fenêtre
-        xw = blk * window
-
-        # FFT
-        X = np.fft.fftshift(np.fft.fft(xw, n=nfft))
-
-        # tension RMS par bin
-        vrms_bin = np.abs(X) / (nfft * coherent_gain * np.sqrt(2))
-
-        # puissance par bin
-        p_w_bin = (vrms_bin ** 2) / R
-
-        # accumulation
-        p_acc += p_w_bin
-
-    # moyenne
-    p_mean = p_acc / n_blocks
-
-    # conversion dBm
-    p_dbm_bin = 10 * np.log10(np.clip(p_mean / 1e-3, 1e-20, None))
-
-    # axe fréquentiel
-    freqs = np.fft.fftshift(
-        np.fft.fftfreq(nfft, d=1 / rate)
-    ) + freq_center
-
-    # =========================
-    # SUPPRESSION DES EDGES
-    # =========================
-
-    half_bw = rate / 2
-
-    mask_edges = (
-        (freqs >= freq_center - half_bw + edge_guard_hz) &
-        (freqs <= freq_center + half_bw - edge_guard_hz)
-    )
-
-    freqs = freqs[mask_edges]
-    p_dbm_bin = p_dbm_bin[mask_edges]
-
-    return freqs, p_dbm_bin
 
 
 import numpy as np
@@ -292,58 +216,6 @@ def rx_only_sync(usrp, freq, rate, duration, gain=0, antenna="RX2"):
 
     return received[:total], t_start
 
-def process_pd_signal_dbm(samples, rate, t_start=0.0, f_offset=5e6, R=50):
-    samples = np.asarray(samples, dtype=np.complex64).ravel()
-    N = len(samples)
-
-    if N == 0 or t_start is None:
-        return np.array([]), np.array([])
-
-    samples = samples - np.mean(samples)
-
-    t = np.arange(N) / rate
-
-    samples_dc = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
-
-    cutoff_if = 1e6
-    sos_if = butter(4, cutoff_if / (rate / 2), btype="low", output="sos")
-    samples_if = sosfiltfilt(sos_if, samples_dc)
-
-    envelope_raw = np.abs(samples_if)
-
-    cutoff_env = 10_000
-    sos_env = butter(4, cutoff_env / (rate / 2), btype="low", output="sos")
-    envelope = sosfiltfilt(sos_env, envelope_raw)
-
-    noise_level = np.median(envelope)
-    noise_std = np.std(envelope)
-
-    threshold = (noise_level + 4.0 * noise_std)/3
-
-    min_distance = int(200e-6 * rate)
-
-    peaks, props = find_peaks(
-        envelope,
-        height=threshold,
-        distance=min_distance
-    )
-
-    if len(peaks) == 0:
-        return np.array([]), np.array([])
-
-    t_peaks = t_start + peaks / rate
-
-    cycle_time = t_peaks % 0.02
-    phases = (cycle_time / 0.02) * 360.0
-
-    amps = envelope[peaks]
-
-    vrms = amps / np.sqrt(2)
-    p_w = (vrms ** 2) / R
-
-    amps_dbm = 10 * np.log10(np.clip(p_w / 1e-3, 1e-20, None))
-
-    return phases, amps_dbm
 
 
 
@@ -362,7 +234,7 @@ def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
     samples_bb = samples * np.exp(-1j * 2 * np.pi * f_offset * t)
 
     # Filtrage autour du signal PD
-    cutoff_if = 1e6
+    cutoff_if = 5e6
     sos_if = butter(
         4,
         cutoff_if / (rate / 2),
@@ -446,7 +318,7 @@ def plot_prpd(acquisitions, name="PRPD_dBm", unity = "dbm"):
 
     ax1.set_title(f"Carte PRPD - {name}")
     ax1.set_xlabel("Phase (degrés)")
-    ax1.set_ylabel(f"Puissance impulsion approximative ({unity})")
+    ax1.set_ylabel(f"Puissance impulsion ({unity})")
     ax1.set_xlim(0, 360)
     # ax1.set_ylim(-100, -30)
     ax1.grid(True)
@@ -463,7 +335,7 @@ def plot_prpd(acquisitions, name="PRPD_dBm", unity = "dbm"):
 
     ax2.set_title(f"Heatmap PRPD - {name}")
     ax2.set_xlabel("Phase (degrés)")
-    ax2.set_ylabel("Puissance impulsion approximative (dBm)")
+    ax2.set_ylabel("Puissance impulsion (dBfs)")
     ax2.set_xlim(0, 360)
     ax2.grid(True)
 
@@ -551,6 +423,15 @@ def main():
             nfft=NFFT,
             remove_dc=True,
             edge_guard_hz=EDGE
+        )
+        # np.savez(
+        #     "/home/yousef/Documents/testing_scripts/GEVernova/After_Aix/CAL2B_files/spectrum_None2_DP.npz",
+        #     freqs=freqss,
+        #     psd=psd_dBFS
+        # )
+        np.savez(
+            "/home/yousef/Documents/testing_scripts/GEVernova/After_Aix/CAL2B_files/Time_WithH_DP.npz",
+            ampl = rx_signal
         )
         
         # plot_spectrum(
