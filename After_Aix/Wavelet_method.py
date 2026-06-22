@@ -7,6 +7,7 @@ import pywt
 
 from scipy.signal import butter, sosfiltfilt
 from scipy.stats import kurtosis
+from scipy.ndimage import median_filter, uniform_filter1d
 
 
 # =====================================================
@@ -17,7 +18,7 @@ F_START = 100e6
 F_STOP  = 2e9
 
 RATE = 12e6
-GAIN = 76
+GAIN = 40
 CHANNEL = 0
 ANTENNA = "RX2"
 
@@ -26,6 +27,8 @@ STEP_HZ = 5e6
 
 REMOVE_DC = True
 LP_CUTOFF_HZ = 5e6
+
+REF_JSON_PATH = "wavelet_reference_no_dp.json"
 
 
 # =====================================================
@@ -38,8 +41,6 @@ WAVELET_LEVEL = 4
 WIN_SIZE = 4096
 STEP_WIN = 2048
 
-REF_JSON_PATH = "wavelet_reference_no_dp.json"
-
 
 # =====================================================
 # CHARGER RÉFÉRENCE JSON
@@ -50,17 +51,12 @@ def load_reference_json(path):
         refs = json.load(f)
 
     print("Référence chargée :", path)
-    print("Nombre de bandes dans JSON :", len(refs["bands"]))
+    print("Nombre de bandes :", len(refs["bands"]))
 
     return refs
 
 
 def get_reference_for_freq(refs, freq):
-    """
-    Récupère la référence correspondant à la fréquence.
-    Si la fréquence exacte n'existe pas, on prend la plus proche.
-    """
-
     freq_keys = np.array([float(k) for k in refs["bands"].keys()])
     idx = np.argmin(np.abs(freq_keys - freq))
 
@@ -120,7 +116,7 @@ def acquire_time_domain(usrp, freq_center, rate, duration, gain, antenna):
 
 
 # =====================================================
-# PRETRAITEMENT
+# PRÉTRAITEMENT
 # =====================================================
 
 def preprocess_samples(samples, rate):
@@ -149,7 +145,7 @@ def preprocess_samples(samples, rate):
 
 
 # =====================================================
-# FEATURES WAVELET AVEC RÉFÉRENCE
+# WAVELET FEATURES AVEC JSON
 # =====================================================
 
 def compute_wavelet_features_with_reference(envelope, ref, rate):
@@ -197,7 +193,7 @@ def compute_wavelet_features_with_reference(envelope, ref, rate):
 
 
 # =====================================================
-# SCORE DP POUR UNE BANDE AVEC JSON
+# SCORE PAR BANDE
 # =====================================================
 
 def wavelet_dp_score_with_json(samples, rate, ref):
@@ -215,9 +211,15 @@ def wavelet_dp_score_with_json(samples, rate, ref):
             "n_suspect": 0,
             "n_windows": 0,
             "suspect_rate": np.nan,
+            "n_suspect_max": 0,
+            "n_suspect_energy": 0,
+            "n_suspect_kurt": 0,
             "max_peak": np.nan,
             "kurt_peak": np.nan,
             "energy_peak_db": np.nan,
+            "max_ratio": np.nan,
+            "energy_ratio": np.nan,
+            "kurt_ratio": np.nan,
         }
 
     max_detail = features["max_detail"]
@@ -232,7 +234,14 @@ def wavelet_dp_score_with_json(samples, rate, ref):
     suspect_energy = energy_detail > T_energy
     suspect_kurt = kurt_detail > T_kurt
 
-    suspect = suspect_max | suspect_energy | suspect_kurt
+    # Fenêtre suspecte seulement si au moins 2 critères sont actifs
+    suspect_count = (
+        suspect_max.astype(int)
+        + suspect_energy.astype(int)
+        + suspect_kurt.astype(int)
+    )
+
+    suspect = suspect_count >= 2
 
     n_windows = len(max_detail)
     n_suspect = int(np.sum(suspect))
@@ -240,26 +249,29 @@ def wavelet_dp_score_with_json(samples, rate, ref):
 
     max_peak = np.max(max_detail)
     kurt_peak = np.max(kurt_detail)
-    energy_peak_db = 10 * np.log10(np.max(energy_detail) + 1e-20)
+    energy_peak = np.max(energy_detail)
 
-    # Score basé sur référence JSON
+    max_ratio = np.percentile(max_detail, 99.5) / (ref["max_detail_p999"] + 1e-20)
+    energy_ratio = np.percentile(energy_detail, 99.5) / (ref["energy_detail_p999"] + 1e-20)
+    kurt_ratio = np.percentile(kurt_detail, 99.5) / (ref["kurt_detail_p999"] + 1e-20)
+
     score = 0
 
-    if suspect_rate > 0.005:
-        score += 20
     if suspect_rate > 0.01:
-        score += 20
+        score += 25
     if suspect_rate > 0.03:
+        score += 25
+
+    if max_ratio > 1.5:
+        score += 15
+    if energy_ratio > 1.5:
+        score += 15
+    if kurt_ratio > 1.5:
         score += 20
 
-    if max_peak > T_max:
-        score += 15
-
-    if kurt_peak > T_kurt:
-        score += 15
-
-    if np.max(energy_detail) > T_energy:
-        score += 10
+    # Pénalité si seulement un ou deux événements isolés
+    if n_suspect <= 2:
+        score = min(score, 30)
 
     score = min(score, 100)
 
@@ -275,16 +287,16 @@ def wavelet_dp_score_with_json(samples, rate, ref):
 
         "max_peak": max_peak,
         "kurt_peak": kurt_peak,
-        "energy_peak_db": energy_peak_db,
+        "energy_peak_db": 10 * np.log10(energy_peak + 1e-20),
 
-        "T_max": T_max,
-        "T_kurt": T_kurt,
-        "T_energy_db": 10 * np.log10(T_energy + 1e-20),
+        "max_ratio": max_ratio,
+        "energy_ratio": energy_ratio,
+        "kurt_ratio": kurt_ratio,
     }
 
 
 # =====================================================
-# SCAN FREQUENTIEL
+# SCAN FRÉQUENTIEL
 # =====================================================
 
 def scan_pd_wavelet_with_json():
@@ -295,24 +307,27 @@ def scan_pd_wavelet_with_json():
 
     freqs = np.arange(F_START, F_STOP + STEP_HZ, STEP_HZ)
 
-    scores = []
-    suspect_rates = []
-    n_suspects = []
-    n_suspects_max = []
-    n_suspects_energy = []
-    n_suspects_kurt = []
-
-    max_peaks = []
-    kurt_peaks = []
-    energy_peaks_db = []
-
-    ref_freqs = []
+    results = {
+        "freqs": [],
+        "scores": [],
+        "suspect_rates": [],
+        "n_suspects": [],
+        "n_suspects_max": [],
+        "n_suspects_energy": [],
+        "n_suspects_kurt": [],
+        "max_peaks": [],
+        "kurt_peaks": [],
+        "energy_peaks_db": [],
+        "max_ratios": [],
+        "energy_ratios": [],
+        "kurt_ratios": [],
+    }
 
     for i, freq in enumerate(freqs):
         ref, ref_freq = get_reference_for_freq(refs, freq)
 
         print(f"\n[{i+1}/{len(freqs)}] Acquisition à {freq/1e6:.1f} MHz")
-        print(f"  Référence utilisée : {ref_freq/1e6:.1f} MHz")
+        print(f"Référence utilisée : {ref_freq/1e6:.1f} MHz")
 
         samples = acquire_time_domain(
             usrp=usrp,
@@ -323,73 +338,93 @@ def scan_pd_wavelet_with_json():
             antenna=ANTENNA
         )
 
-        result = wavelet_dp_score_with_json(
-            samples=samples,
-            rate=RATE,
-            ref=ref
-        )
+        result = wavelet_dp_score_with_json(samples, RATE, ref)
 
-        scores.append(result["score"])
-        suspect_rates.append(result["suspect_rate"])
-        n_suspects.append(result["n_suspect"])
-
-        n_suspects_max.append(result["n_suspect_max"])
-        n_suspects_energy.append(result["n_suspect_energy"])
-        n_suspects_kurt.append(result["n_suspect_kurt"])
-
-        max_peaks.append(result["max_peak"])
-        kurt_peaks.append(result["kurt_peak"])
-        energy_peaks_db.append(result["energy_peak_db"])
-
-        ref_freqs.append(ref_freq)
+        results["freqs"].append(freq)
+        results["scores"].append(result["score"])
+        results["suspect_rates"].append(result["suspect_rate"])
+        results["n_suspects"].append(result["n_suspect"])
+        results["n_suspects_max"].append(result["n_suspect_max"])
+        results["n_suspects_energy"].append(result["n_suspect_energy"])
+        results["n_suspects_kurt"].append(result["n_suspect_kurt"])
+        results["max_peaks"].append(result["max_peak"])
+        results["kurt_peaks"].append(result["kurt_peak"])
+        results["energy_peaks_db"].append(result["energy_peak_db"])
+        results["max_ratios"].append(result["max_ratio"])
+        results["energy_ratios"].append(result["energy_ratio"])
+        results["kurt_ratios"].append(result["kurt_ratio"])
 
         print(
-            f"  Score DP = {result['score']:.1f}% | "
+            f"Score brut = {result['score']:.1f}% | "
             f"Fenêtres suspectes = {result['n_suspect']}/{result['n_windows']} | "
             f"Taux = {100*result['suspect_rate']:.2f}%"
         )
 
         print(
-            f"  Suspect Max={result['n_suspect_max']} | "
-            f"Energy={result['n_suspect_energy']} | "
-            f"Kurt={result['n_suspect_kurt']}"
+            f"Ratios : Max={result['max_ratio']:.2f} | "
+            f"Energy={result['energy_ratio']:.2f} | "
+            f"Kurt={result['kurt_ratio']:.2f}"
         )
 
-        print(
-            f"  MaxCoef={result['max_peak']:.2f} / T={result['T_max']:.2f} | "
-            f"KurtMax={result['kurt_peak']:.2f} / T={result['T_kurt']:.2f} | "
-            f"EnergyMax={result['energy_peak_db']:.2f} dB / T={result['T_energy_db']:.2f} dB"
-        )
+    for key in results:
+        results[key] = np.array(results[key])
 
-    return {
-        "freqs": freqs,
-        "ref_freqs": np.array(ref_freqs),
-        "scores": np.array(scores),
-        "suspect_rates": np.array(suspect_rates),
-        "n_suspects": np.array(n_suspects),
-        "n_suspects_max": np.array(n_suspects_max),
-        "n_suspects_energy": np.array(n_suspects_energy),
-        "n_suspects_kurt": np.array(n_suspects_kurt),
-        "max_peaks": np.array(max_peaks),
-        "kurt_peaks": np.array(kurt_peaks),
-        "energy_peaks_db": np.array(energy_peaks_db),
-    }
+    return results
 
 
 # =====================================================
-# VISUALISATION
+# POST-TRAITEMENT COHÉRENCE FRÉQUENTIELLE
 # =====================================================
 
-def plot_wavelet_scan_with_json(results):
+def postprocess_dp_score(raw_scores, median_size=5, smooth_size=9):
+    raw_scores = np.asarray(raw_scores, dtype=float)
+
+    score_med = median_filter(raw_scores, size=median_size, mode="nearest")
+    score_smooth = uniform_filter1d(score_med, size=smooth_size, mode="nearest")
+
+    isolated = (raw_scores > 60) & (score_smooth < 30)
+
+    final_score = raw_scores.copy()
+    final_score[isolated] *= 0.25
+
+    final_score = 0.4 * final_score + 0.6 * score_smooth
+    final_score = np.clip(final_score, 0, 100)
+
+    return final_score, score_med, score_smooth, isolated
+
+
+# =====================================================
+# VISUALISATION FINALE
+# =====================================================
+
+def plot_final_results(results):
     freqs_mhz = results["freqs"] / 1e6
+    raw_scores = results["scores"]
+
+    final_score, score_med, score_smooth, isolated = postprocess_dp_score(
+        raw_scores,
+        median_size=5,
+        smooth_size=9
+    )
 
     plt.figure(figsize=(14, 5))
-    plt.plot(freqs_mhz, results["scores"], marker="o")
-    plt.title("Score DP par fréquence - Wavelet avec référence JSON sans DP")
+    plt.plot(freqs_mhz, raw_scores, alpha=0.35, label="Score brut")
+    plt.plot(freqs_mhz, score_smooth, linewidth=2, label="Tendance large bande")
+    plt.plot(freqs_mhz, final_score, linewidth=2, label="Score final cohérent")
+    plt.scatter(
+        freqs_mhz[isolated],
+        raw_scores[isolated],
+        marker="x",
+        s=80,
+        label="Pics isolés pénalisés"
+    )
+
+    plt.title("Score DP corrigé par cohérence fréquentielle")
     plt.xlabel("Fréquence centrale RX (MHz)")
     plt.ylabel("Score DP (%)")
     plt.ylim(-5, 105)
     plt.grid(True)
+    plt.legend()
     plt.tight_layout()
     plt.show()
 
@@ -403,9 +438,9 @@ def plot_wavelet_scan_with_json(results):
     plt.show()
 
     plt.figure(figsize=(14, 5))
-    plt.plot(freqs_mhz, results["n_suspects_max"], label="Max coef")
-    plt.plot(freqs_mhz, results["n_suspects_energy"], label="Énergie")
-    plt.plot(freqs_mhz, results["n_suspects_kurt"], label="Kurtosis")
+    plt.plot(freqs_mhz, results["n_suspects_max"], label="Critère max coef")
+    plt.plot(freqs_mhz, results["n_suspects_energy"], label="Critère énergie")
+    plt.plot(freqs_mhz, results["n_suspects_kurt"], label="Critère kurtosis")
     plt.title("Nombre de fenêtres suspectes par critère")
     plt.xlabel("Fréquence centrale RX (MHz)")
     plt.ylabel("Nombre de fenêtres")
@@ -415,42 +450,35 @@ def plot_wavelet_scan_with_json(results):
     plt.show()
 
     plt.figure(figsize=(14, 5))
-    plt.plot(freqs_mhz, results["max_peaks"], marker="o")
-    plt.title("Maximum des coefficients Wavelet")
+    plt.plot(freqs_mhz, results["max_ratios"], label="Ratio max")
+    plt.plot(freqs_mhz, results["energy_ratios"], label="Ratio énergie")
+    plt.plot(freqs_mhz, results["kurt_ratios"], label="Ratio kurtosis")
+    plt.axhline(1.5, linestyle="--", label="Seuil ratio 1.5")
+    plt.title("Ratios par rapport à la référence JSON sans DP")
     plt.xlabel("Fréquence centrale RX (MHz)")
-    plt.ylabel("Max coefficient normalisé")
+    plt.ylabel("Ratio")
     plt.grid(True)
+    plt.legend()
     plt.tight_layout()
     plt.show()
 
-    plt.figure(figsize=(14, 5))
-    plt.plot(freqs_mhz, results["kurt_peaks"], marker="o")
-    plt.title("Kurtosis Wavelet maximale")
-    plt.xlabel("Fréquence centrale RX (MHz)")
-    plt.ylabel("Kurtosis max")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    best_idx = np.nanargmax(final_score)
 
-    plt.figure(figsize=(14, 5))
-    plt.plot(freqs_mhz, results["energy_peaks_db"], marker="o")
-    plt.title("Énergie Wavelet locale maximale")
-    plt.xlabel("Fréquence centrale RX (MHz)")
-    plt.ylabel("Énergie locale max (dB)")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-    best_idx = np.nanargmax(results["scores"])
-
-    print("\n===== Résumé scan DP avec référence JSON =====")
+    print("\n===== Résumé final =====")
     print(f"Fréquence la plus suspecte : {freqs_mhz[best_idx]:.1f} MHz")
-    print(f"Score DP max              : {results['scores'][best_idx]:.1f}%")
-    print(f"Taux fenêtres suspectes   : {100*results['suspect_rates'][best_idx]:.2f}%")
-    print(f"Fenêtres suspectes        : {results['n_suspects'][best_idx]}")
-    print(f"Max coefficient wavelet   : {results['max_peaks'][best_idx]:.2f}")
-    print(f"Kurtosis max              : {results['kurt_peaks'][best_idx]:.2f}")
-    print(f"Énergie max               : {results['energy_peaks_db'][best_idx]:.2f} dB")
+    print(f"Score brut max            : {np.nanmax(raw_scores):.1f}%")
+    print(f"Score final max           : {np.nanmax(final_score):.1f}%")
+    print(f"Score final moyen         : {np.nanmean(final_score):.1f}%")
+    print(f"Nombre pics isolés        : {np.sum(isolated)}")
+
+    if np.nanmean(final_score) > 50:
+        print("Conclusion : signature large bande compatible avec DP.")
+    elif np.nanmean(final_score) > 25:
+        print("Conclusion : signature DP possible, à confirmer.")
+    else:
+        print("Conclusion : pas de signature large bande forte.")
+
+    return final_score
 
 
 # =====================================================
@@ -459,8 +487,8 @@ def plot_wavelet_scan_with_json(results):
 
 def main():
     results = scan_pd_wavelet_with_json()
-    plot_wavelet_scan_with_json(results)
-    return results
+    final_score = plot_final_results(results)
+    return results, final_score
 
 
-results = main()
+results, final_score = main()
