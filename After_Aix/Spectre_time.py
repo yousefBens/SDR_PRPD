@@ -22,7 +22,7 @@ STEP_HZ = 5e6         # pas entre deux fréquences centrales
 
 LP_CUTOFF_HZ = 5e6    # largeur utile après filtrage
 
-ROBUST_PERCENTILE = 99.9
+ROBUST_PERCENTILE = 99.5
 REMOVE_DC = True
 
 
@@ -128,7 +128,7 @@ def scan_pd_time_domain():
 
     max_values = []
     robust_values = []
-    Gain_l = 40
+    # Gain_l = 40
     for i, freq in enumerate(freqs):
         print(f"[{i+1}/{len(freqs)}] Acquisition à {freq/1e6:.1f} MHz")
 
@@ -137,7 +137,7 @@ def scan_pd_time_domain():
             freq_center=freq,
             rate=RATE,
             duration=ACQ_DURATION,
-            gain=Gain_l,
+            gain=GAIN,
             antenna=ANTENNA
         )
 
@@ -161,6 +161,7 @@ def plot_temporal_scan(freqs, max_values, robust_values):
 
     plt.plot(freqs / 1e6, max_values, label="Max temporel")
     plt.plot(freqs / 1e6, robust_values, label=f"Percentile {ROBUST_PERCENTILE}%")
+    plt.axhline(robust_values.mean(), color='r', linestyle='--', label=f"Mean = {robust_values.mean():.2f}")
 
     plt.title("Détection de pulses par scan temporel")
     plt.xlabel("Fréquence centrale RX (MHz)")
@@ -177,13 +178,6 @@ def plot_temporal_scan(freqs, max_values, robust_values):
 
 def main():
     freqs, max_values, robust_values = scan_pd_time_domain()
-
-    # np.savez(
-    #     "scan_pd_time_domain_100MHz_2GHz.npz",
-    #     freqs=freqs,
-    #     max_dbfs=max_values,
-    #     robust_dbfs=robust_values
-    # )
 
     plot_temporal_scan(freqs, max_values, robust_values)
 

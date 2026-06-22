@@ -105,6 +105,41 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.uhd_usrp_source_0.set_center_freq(freq_center, 0)
         self.uhd_usrp_source_0.set_antenna("RX2", 0)
         self.uhd_usrp_source_0.set_gain(gain, 0)
+        self.qtgui_waterfall_sink_x_1 = qtgui.waterfall_sink_c(
+            4096, #size
+            window.WIN_BLACKMAN_hARRIS, #wintype
+            freq_center, #fc
+            samp_rate, #bw
+            "Spectogram", #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_waterfall_sink_x_1.set_update_time(0.10)
+        self.qtgui_waterfall_sink_x_1.enable_grid(False)
+        self.qtgui_waterfall_sink_x_1.enable_axis_labels(True)
+
+
+
+        labels = ['', '', '', '', '',
+                  '', '', '', '', '']
+        colors = [0, 0, 0, 0, 0,
+                  0, 0, 0, 0, 0]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_waterfall_sink_x_1.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_waterfall_sink_x_1.set_line_label(i, labels[i])
+            self.qtgui_waterfall_sink_x_1.set_color_map(i, colors[i])
+            self.qtgui_waterfall_sink_x_1.set_line_alpha(i, alphas[i])
+
+        self.qtgui_waterfall_sink_x_1.set_intensity_range(-140, 10)
+
+        self._qtgui_waterfall_sink_x_1_win = sip.wrapinstance(self.qtgui_waterfall_sink_x_1.qwidget(), Qt.QWidget)
+
+        self.top_layout.addWidget(self._qtgui_waterfall_sink_x_1_win)
         self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
             (1024*pnt), #size
             samp_rate, #samp_rate
@@ -250,11 +285,12 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.connect((self.blocks_float_to_complex_0, 0), (self.qtgui_const_sink_x_0, 0))
-        self.connect((self.epy_block_0, 1), (self.blocks_float_to_complex_0, 1))
         self.connect((self.epy_block_0, 0), (self.blocks_float_to_complex_0, 0))
+        self.connect((self.epy_block_0, 1), (self.blocks_float_to_complex_0, 1))
         self.connect((self.uhd_usrp_source_0, 0), (self.epy_block_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.uhd_usrp_source_0, 0), (self.qtgui_waterfall_sink_x_1, 0))
 
 
     def closeEvent(self, event):
@@ -281,6 +317,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.epy_block_0.samp_rate = self.samp_rate
         self.qtgui_freq_sink_x_0.set_frequency_range(self.freq_center, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
+        self.qtgui_waterfall_sink_x_1.set_frequency_range(self.freq_center, self.samp_rate)
         self.uhd_usrp_source_0.set_samp_rate(self.samp_rate)
 
     def get_pnt(self):
@@ -314,6 +351,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
     def set_freq_center(self, freq_center):
         self.freq_center = freq_center
         self.qtgui_freq_sink_x_0.set_frequency_range(self.freq_center, self.samp_rate)
+        self.qtgui_waterfall_sink_x_1.set_frequency_range(self.freq_center, self.samp_rate)
         self.uhd_usrp_source_0.set_center_freq(self.freq_center, 0)
 
 
