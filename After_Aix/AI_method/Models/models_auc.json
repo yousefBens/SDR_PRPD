@@ -1,0 +1,7 @@
+{
+    "RandomForest": 0.9993446931338308,
+    "ExtraTrees": 0.9994818971119425,
+    "GradientBoosting": 0.9993597626084141,
+    "LogisticRegression": 0.9963551964140966,
+    "SVM_RBF": 0.9986506361901613
+}

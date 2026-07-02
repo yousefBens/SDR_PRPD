@@ -75,10 +75,10 @@ blocks:
     min_len: '100'
     orient: QtCore.Qt.Horizontal
     rangeType: float
-    start: start_f
-    step: ((2000e6-(samp_rate/2))-start_f)/1
-    stop: 2000e6-(samp_rate/2)
-    value: start_f
+    start: 400e6
+    step: 6e6
+    stop: 600e6
+    value: 400e6
     widget: counter_slider
   states:
     bus_sink: false
@@ -321,7 +321,7 @@ blocks:
     color9: '"dark green"'
     comment: ''
     ctrlpanel: 'False'
-    fc: freq_center
+    fc: freq_center_test
     fftsize: '32768'
     freqhalf: 'True'
     grid: 'True'
@@ -659,7 +659,7 @@ blocks:
     bw7: '0'
     bw8: '0'
     bw9: '0'
-    center_freq0: freq_center
+    center_freq0: freq_center_test
     center_freq1: '0'
     center_freq10: '0'
     center_freq11: '0'

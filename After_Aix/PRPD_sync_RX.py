@@ -5,15 +5,13 @@ from scipy.signal import butter, find_peaks, sosfiltfilt
 import time
 import os
 
-# =========================
-# CONFIGURATION
-# =========================
+
 
 NFFT = 32768
 FREQ = 1965e6
 RATE = 12e6
 DURATION = 3
-GAIN = 76 # Gain externe
+GAIN = 76 
 CHANNEL = 0
 ANTENNA = "RX2"
 
@@ -22,7 +20,7 @@ EDGE = (RATE/2)*0.3
 
 R = 50
 
-# fréquence du signal utile par rapport au centre SDR
+
 F_OFFSET = 5e6
 
 N_ACQ = 1
@@ -48,73 +46,58 @@ def compute_spectrum_dbfs(
     if len(samples) < nfft:
         return np.array([]), np.array([])
 
-    # =========================
-    # SUPPRESSION DC
-    # =========================
+
     if remove_dc:
         samples = samples - np.mean(samples)
 
-    # =========================
-    # BLOCS FFT
-    # =========================
+
     n_blocks = len(samples) // nfft
     samples = samples[:n_blocks * nfft]
 
     blocks = samples.reshape(n_blocks, nfft)
 
-    # =========================
-    # FENÊTRE HANN
-    # =========================
+
     window = np.hanning(nfft)
 
-    # correction amplitude fenêtre
+
     coherent_gain = np.sum(window) / nfft
 
-    # accumulation puissance
+
     p_acc = np.zeros(nfft)
 
     for blk in blocks:
 
-        # fenêtre
+
         xw = blk * window
 
-        # FFT
+
         X = np.fft.fftshift(np.fft.fft(xw, nfft))
 
-        # normalisation FFT
+
         X = X / (nfft * coherent_gain)
 
-        # puissance
+
         power = np.abs(X) ** 2
 
-        # accumulation
+
         p_acc += power
 
-    # moyenne
+
     p_mean = p_acc / n_blocks
 
-    # =========================
-    # NORMALISATION FULL SCALE
-    # =========================
-
-    # pleine échelle complexe normalisée
     full_scale_power = 1.0
 
-    # conversion dBFS
+
     spectrum_dbfs = 10 * np.log10(
         np.clip(p_mean / full_scale_power, 1e-20, None)
     )
 
-    # =========================
-    # AXE FREQUENCES
-    # =========================
+
     freqs = np.fft.fftshift(
         np.fft.fftfreq(nfft, d=1 / rate)
     ) + freq_center
 
-    # =========================
-    # SUPPRESSION EDGES
-    # =========================
+
     half_bw = rate / 2
 
     mask_edges = (
@@ -143,9 +126,6 @@ def plot_spectrum(freqs, psd_dbm, name="Freq_domain_plot", unity = "dBm/bin"):
     plt.tight_layout()
     plt.show()
 
-# =========================
-# ACQUISITION RX SYNCHRONISÉE
-# =========================
 
 def rx_only_sync(usrp, freq, rate, duration, gain=0, antenna="RX2"):
     num_samps = int(duration * rate)
@@ -370,9 +350,6 @@ def Time_domain_gr(samples, rate, name = ""):
     plt.savefig(f"./Main_figs/Time_domain_plot{name}.png")
     plt.show()
 
-# =========================
-# MAIN
-# =========================
 
 def main():
     print("Initialisation USRP...")

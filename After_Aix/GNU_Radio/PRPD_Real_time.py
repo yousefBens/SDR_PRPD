@@ -68,7 +68,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate = 12e6
         self.pnt = pnt = 8
         self.gain = gain = 40
-        self.freq_center_test = freq_center_test = start_f
+        self.freq_center_test = freq_center_test = 400e6
         self.freq_center_p = freq_center_p = 100e6
         self.freq_center = freq_center = start_f
 
@@ -79,6 +79,9 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self._gain_range = qtgui.Range(0, 76, 5, 40, 100)
         self._gain_win = qtgui.RangeWidget(self._gain_range, self.set_gain, "'gain'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._gain_win)
+        self._freq_center_test_range = qtgui.Range(400e6, 600e6, 6e6, 400e6, 100)
+        self._freq_center_test_win = qtgui.RangeWidget(self._freq_center_test_range, self.set_freq_center_test, "'freq_center_test'", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._freq_center_test_win)
         self._freq_center_range = qtgui.Range(start_f, 2000e6-(samp_rate/2), samp_rate * 0.8, start_f, 100)
         self._freq_center_win = qtgui.RangeWidget(self._freq_center_range, self.set_freq_center, "'freq_center'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._freq_center_win)
@@ -102,7 +105,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         # Sleep 1 second to ensure next PPS has come
         time.sleep(1)
 
-        self.uhd_usrp_source_0.set_center_freq(freq_center, 0)
+        self.uhd_usrp_source_0.set_center_freq(freq_center_test, 0)
         self.uhd_usrp_source_0.set_antenna("RX2", 0)
         self.uhd_usrp_source_0.set_gain(gain, 0)
         self.qtgui_waterfall_sink_x_1 = qtgui.waterfall_sink_c(
@@ -194,7 +197,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
             32768, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
-            freq_center, #fc
+            freq_center_test, #fc
             samp_rate, #bw
             "Input Spectre", #name
             1,
@@ -274,9 +277,6 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
 
         self._qtgui_const_sink_x_0_win = sip.wrapinstance(self.qtgui_const_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_const_sink_x_0_win)
-        self._freq_center_test_range = qtgui.Range(start_f, 2000e6-(samp_rate/2), ((2000e6-(samp_rate/2))-start_f)/1, start_f, 100)
-        self._freq_center_test_win = qtgui.RangeWidget(self._freq_center_test_range, self.set_freq_center_test, "'freq_center_test'", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._freq_center_test_win)
         self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, f_offset=5e6, t_start=1, f_ref=50, cutoff_if=5.9e6, threshold_factor=4, min_distance_us=10, phase_offset_deg=0)
         self.blocks_float_to_complex_0 = blocks.float_to_complex(1)
 
@@ -307,7 +307,6 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
     def set_start_f(self, start_f):
         self.start_f = start_f
         self.set_freq_center(self.start_f)
-        self.set_freq_center_test(self.start_f)
 
     def get_samp_rate(self):
         return self.samp_rate
@@ -315,7 +314,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
         self.epy_block_0.samp_rate = self.samp_rate
-        self.qtgui_freq_sink_x_0.set_frequency_range(self.freq_center, self.samp_rate)
+        self.qtgui_freq_sink_x_0.set_frequency_range(self.freq_center_test, self.samp_rate)
         self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
         self.qtgui_waterfall_sink_x_1.set_frequency_range(self.freq_center, self.samp_rate)
         self.uhd_usrp_source_0.set_samp_rate(self.samp_rate)
@@ -338,6 +337,8 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
 
     def set_freq_center_test(self, freq_center_test):
         self.freq_center_test = freq_center_test
+        self.qtgui_freq_sink_x_0.set_frequency_range(self.freq_center_test, self.samp_rate)
+        self.uhd_usrp_source_0.set_center_freq(self.freq_center_test, 0)
 
     def get_freq_center_p(self):
         return self.freq_center_p
@@ -350,9 +351,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
 
     def set_freq_center(self, freq_center):
         self.freq_center = freq_center
-        self.qtgui_freq_sink_x_0.set_frequency_range(self.freq_center, self.samp_rate)
         self.qtgui_waterfall_sink_x_1.set_frequency_range(self.freq_center, self.samp_rate)
-        self.uhd_usrp_source_0.set_center_freq(self.freq_center, 0)
 
 
 

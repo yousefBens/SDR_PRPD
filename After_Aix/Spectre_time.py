@@ -3,32 +3,31 @@ import matplotlib.pyplot as plt
 import uhd
 import time
 from scipy.signal import butter, sosfiltfilt
+import time
 
-# =====================================================
-# CONFIGURATION
-# =====================================================
 
-F_START = 100e6       # début scan : 100 MHz
-F_STOP  = 2e9         # fin scan : 2 GHz
 
-RATE = 12e6           # fréquence d'échantillonnage B200
+F_START = 90e6    
+F_STOP  = 2e9    
+
+RATE = 12e6           
 GAIN = 40
 CHANNEL = 0
 ANTENNA = "RX2"
 
-ACQ_DURATION = 0.02   # durée acquisition par petite bande en secondes
-STEP_HZ = 5e6         # pas entre deux fréquences centrales
+DISCARD_TIME = 0.002
+USEFUL_DURATION = 0.02
+ACQ_DURATION = USEFUL_DURATION + DISCARD_TIME
+STEP_HZ =12e6        
 
 
-LP_CUTOFF_HZ = 5e6    # largeur utile après filtrage
+LP_CUTOFF_HZ = 4e6    
 
-ROBUST_PERCENTILE = 99.5
-REMOVE_DC = True
+ROBUST_PERCENTILE = 99.99
+REMOVE_DC = False
 
 
-# =====================================================
-# ACQUISITION USRP
-# =====================================================
+
 
 def acquire_time_domain(usrp, freq_center, rate, duration, gain, antenna):
     num_samps = int(rate * duration)
@@ -75,9 +74,7 @@ def acquire_time_domain(usrp, freq_center, rate, duration, gain, antenna):
     return samples[:total]
 
 
-# =====================================================
-# TRAITEMENT TEMPOREL POUR UNE BANDE
-# =====================================================
+
 
 def temporal_band_metric(samples, rate):
     samples = np.asarray(samples, dtype=np.complex64).ravel()
@@ -88,6 +85,9 @@ def temporal_band_metric(samples, rate):
     if REMOVE_DC:
         samples = samples - np.mean(samples)
 
+    discard = int(DISCARD_TIME * rate)  # delet 2 ms
+    if len(samples) > discard:
+        samples = samples[discard:]
     # Filtre passe-bas pour garder seulement la bande utile
     cutoff = min(LP_CUTOFF_HZ, 0.45 * rate)
 
@@ -109,16 +109,17 @@ def temporal_band_metric(samples, rate):
     # Max robuste : évite qu'un seul point parasite domine
     robust_max = np.percentile(envelope, ROBUST_PERCENTILE)
 
+    med_amp = np.median(envelope)
+
     # Conversion dBFS approximative
     max_dbfs = 20 * np.log10(np.clip(max_amp, 1e-12, None))
     robust_dbfs = 20 * np.log10(np.clip(robust_max, 1e-12, None))
+    med_dbfs = 20 * np.log10(np.clip(med_amp, 1e-12, None))
 
-    return max_dbfs, robust_dbfs
+    return max_dbfs, robust_dbfs, med_dbfs
 
 
-# =====================================================
-# SCAN FREQUENTIEL
-# =====================================================
+
 
 def scan_pd_time_domain():
     print("Initialisation USRP...")
@@ -128,9 +129,12 @@ def scan_pd_time_domain():
 
     max_values = []
     robust_values = []
+    med_values = []
     # Gain_l = 40
+    print("freqs = ", freqs)
     for i, freq in enumerate(freqs):
         print(f"[{i+1}/{len(freqs)}] Acquisition à {freq/1e6:.1f} MHz")
+        print("Freq central = ", freq)
 
         samples = acquire_time_domain(
             usrp=usrp,
@@ -140,28 +144,36 @@ def scan_pd_time_domain():
             gain=GAIN,
             antenna=ANTENNA
         )
-
-        max_dbfs, robust_dbfs = temporal_band_metric(samples, RATE)
+        # Time_domain_gr(samples, RATE)
+    
+        max_dbfs, robust_dbfs, med_dbfs= temporal_band_metric(samples, RATE)
 
         max_values.append(max_dbfs)
         robust_values.append(robust_dbfs)
+        med_values.append(med_dbfs)
+        # time.sleep(0.1)
 
-        print(f"   Max = {max_dbfs:.2f} dBFS | Robust = {robust_dbfs:.2f} dBFS")
+        print(f"   Max = {max_dbfs:.2f} dBFS | Robust = {robust_dbfs:.2f} dBFS| Median = {med_dbfs:.2f} dBFS")
 
-    return freqs, np.array(max_values), np.array(robust_values)
+    return freqs, np.array(max_values), np.array(robust_values), np.array(med_values)
 
 
-# =====================================================
-# AFFICHAGE
-# =====================================================
 
-def plot_temporal_scan(freqs, max_values, robust_values):
+
+def plot_temporal_scan(freqs, max_values, robust_values, med_values):
     print("len(max_values) = ", len(max_values))
     plt.figure(figsize=(13, 5))
-
+    a = -53.16
+    # a = np.argmax(max_values.max())
+    # print("a = ", a)
     plt.plot(freqs / 1e6, max_values, label="Max temporel")
+    print("Max = ", max_values.max())
+    # plt.scatter(a / 1e6, max_values.max(), label="Max temporel")
+    
     plt.plot(freqs / 1e6, robust_values, label=f"Percentile {ROBUST_PERCENTILE}%")
-    plt.axhline(robust_values.mean(), color='r', linestyle='--', label=f"Mean = {robust_values.mean():.2f}")
+    # # plt.plot(freqs / 1e6, med_values, label=f"Percentile {50}%")
+    plt.axhline(a, color='r', linestyle='--', label=f"Mean (None PD Gain = {GAIN} db) = {a:.2f}")
+    plt.axhline(max_values.mean(), color='green', linestyle='--', label=f"Mean (Current PD Gain = {GAIN} db) = {max_values.mean():.2f}")
 
     plt.title("Détection de pulses par scan temporel")
     plt.xlabel("Fréquence centrale RX (MHz)")
@@ -172,14 +184,30 @@ def plot_temporal_scan(freqs, max_values, robust_values):
     plt.show()
 
 
-# =====================================================
-# MAIN
-# =====================================================
+
+def Time_domain_gr(samples, rate, name = ""):
+    t = np.arange(0, ACQ_DURATION, 1/rate)
+    signal_50 = 0.1 * np.sin(2*np.pi*50*t)
+    alpha = int(len(t)/40)
+    plt.figure(figsize=(12, 5))
+    plt.plot(t[:], np.real(samples)[:], label = "Real part")
+    plt.plot(t[:], np.imag(samples)[:], label = "Imag part")
+    # plt.plot(t[:alpha], signal_50[:alpha], label = "Signal 50 Hz")
+    plt.title("Time Sink")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude (V)")
+    plt.legend()
+    plt.grid()
+    plt.savefig(f"./Main_figs/Time_domain_plot{name}.png")
+    plt.show()
+
 
 def main():
-    freqs, max_values, robust_values = scan_pd_time_domain()
-
-    plot_temporal_scan(freqs, max_values, robust_values)
+    start = time.perf_counter()
+    freqs, max_values, robust_values, med_values= scan_pd_time_domain()
+    end = time.perf_counter()
+    print("Time duration is : ", np.abs(end - start))
+    plot_temporal_scan(freqs, max_values, robust_values, med_values)
 
 
 if __name__ == "__main__":
