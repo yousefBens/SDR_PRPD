@@ -18,10 +18,10 @@ ANTENNA = "RX2"
 DISCARD_TIME = 0.002
 USEFUL_DURATION = 0.02
 ACQ_DURATION = USEFUL_DURATION + DISCARD_TIME
-STEP_HZ =12e6        
+STEP_HZ =10e6        
 
 
-LP_CUTOFF_HZ = 4e6    
+LP_CUTOFF_HZ = 5.9e6    
 
 ROBUST_PERCENTILE = 99.99
 REMOVE_DC = False
@@ -85,11 +85,11 @@ def temporal_band_metric(samples, rate):
     if REMOVE_DC:
         samples = samples - np.mean(samples)
 
-    discard = int(DISCARD_TIME * rate)  # delet 2 ms
+    discard = int(DISCARD_TIME * rate)  # delay 2 ms
     if len(samples) > discard:
         samples = samples[discard:]
     # Filtre passe-bas pour garder seulement la bande utile
-    cutoff = min(LP_CUTOFF_HZ, 0.45 * rate)
+    cutoff = min(LP_CUTOFF_HZ, 0.5 * rate)
 
     sos = butter(
         4,

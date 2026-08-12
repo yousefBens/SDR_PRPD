@@ -8,10 +8,10 @@ import os
 
 
 NFFT = 32768
-FREQ = 1965e6
+FREQ = 1.196e9
 RATE = 12e6
 DURATION = 3
-GAIN = 76 
+GAIN = 40
 CHANNEL = 0
 ANTENNA = "RX2"
 
@@ -21,7 +21,7 @@ EDGE = (RATE/2)*0.3
 R = 50
 
 
-F_OFFSET = 5e6
+F_OFFSET = 0e6
 
 N_ACQ = 1
 
@@ -230,7 +230,7 @@ def process_pd_signal_dbfs(samples, rate, t_start=0.0, f_offset=5e6):
     # Seuil robuste
     noise_level = np.median(envelope)
     noise_std = np.std(envelope)
-    threshold = noise_level + 4.0 * noise_std
+    threshold = noise_level + 4.0 * noise_std*1/2
 
     min_distance = int(200e-6 * rate)
 
@@ -382,7 +382,7 @@ def main():
             print("Acquisition vide.")
             continue
 
-        # Time_domain_gr(rx_signal, RATE, name = "")
+        Time_domain_gr(rx_signal, RATE, name = "")
         # freqs, psd_dbm = compute_spectrum_dbm_per_bin(
         #     rx_signal,
         #     RATE,

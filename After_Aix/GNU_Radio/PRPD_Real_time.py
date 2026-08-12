@@ -79,7 +79,7 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         self._gain_range = qtgui.Range(0, 76, 5, 40, 100)
         self._gain_win = qtgui.RangeWidget(self._gain_range, self.set_gain, "'gain'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._gain_win)
-        self._freq_center_test_range = qtgui.Range(400e6, 600e6, 6e6, 400e6, 100)
+        self._freq_center_test_range = qtgui.Range(400e6, 2000e6, 6e6, 400e6, 100)
         self._freq_center_test_win = qtgui.RangeWidget(self._freq_center_test_range, self.set_freq_center_test, "'freq_center_test'", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._freq_center_test_win)
         self._freq_center_range = qtgui.Range(start_f, 2000e6-(samp_rate/2), samp_rate * 0.8, start_f, 100)

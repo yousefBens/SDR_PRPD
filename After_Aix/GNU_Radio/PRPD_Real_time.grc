@@ -77,7 +77,7 @@ blocks:
     rangeType: float
     start: 400e6
     step: 6e6
-    stop: 600e6
+    stop: 2000e6
     value: 400e6
     widget: counter_slider
   states:
