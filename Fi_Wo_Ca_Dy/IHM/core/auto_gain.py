@@ -64,11 +64,11 @@ GAIN_START_DB: float = 40.0
 # ------------------------------------------------------------
 # Fichier provenant de TA caractérisation de dynamique
 # ------------------------------------------------------------
-
+# Fi_Wo_Ca_Dy/Dynamic/Dyn_Files/b200_dynamic_range_max_pulses
 DYNAMIC_SUMMARY_CSV = (
     Path.home()
-    / "b200_dynamic_range_max_pulses"
-    / "dynamic_range_max_summary.csv"
+    #/ "yousef"
+    / "Documents/testing_scripts/GEVernova/Fi_Wo_Ca_Dy/Dynamic/Dyn_Files/b200_dynamic_range_max_pulses/dynamic_range_max_summary.csv"
 )
 
 # Si ton fichier est ailleurs, change uniquement cette ligne.
