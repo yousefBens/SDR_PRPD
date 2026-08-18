@@ -285,8 +285,8 @@ class PRPD_Real_time(gr.top_block, Qt.QWidget):
         # Connections
         ##################################################
         self.connect((self.blocks_float_to_complex_0, 0), (self.qtgui_const_sink_x_0, 0))
-        self.connect((self.epy_block_0, 0), (self.blocks_float_to_complex_0, 0))
         self.connect((self.epy_block_0, 1), (self.blocks_float_to_complex_0, 1))
+        self.connect((self.epy_block_0, 0), (self.blocks_float_to_complex_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.epy_block_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.uhd_usrp_source_0, 0), (self.qtgui_time_sink_x_0, 0))
