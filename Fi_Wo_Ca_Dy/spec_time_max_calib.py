@@ -24,9 +24,9 @@ F_START_HZ = 100e6
 F_STOP_HZ = 2.0e9
 
 RATE_HZ = 12e6
-GAIN_DB = 40.0
+GAIN_DB = 76.0
 
-STEP_HZ = 12e6
+STEP_HZ = RATE_HZ//1
 
 # Offset matériel du LO afin de limiter les défauts autour de DC.
 LO_OFFSET_HZ = 1e6
