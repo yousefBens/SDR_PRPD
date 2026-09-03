@@ -458,7 +458,7 @@ class ConfigPanel(QFrame):
         self.settle_spin = QDoubleSpinBox()
 
         self.settle_spin.setRange(
-            20.0,
+            1.0,
             500.0,
         )
 
