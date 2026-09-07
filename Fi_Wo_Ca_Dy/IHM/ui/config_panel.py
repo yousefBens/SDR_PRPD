@@ -307,179 +307,71 @@ class ConfigPanel(QFrame):
     # ──────────────────────────────────────────────────────────
 
     def _group_scan(self) -> QGroupBox:
-
-        box = QGroupBox(
-            "Scan spectral"
-        )
-
-        box.setObjectName(
-            "ConfigGroup"
-        )
-
+        box = QGroupBox("Scan spectral")
+        box.setObjectName("ConfigGroup")
         lay = QVBoxLayout(box)
-
-        # ======================================================
-        # F START
-        # ======================================================
-
-        lay.addWidget(
-            QLabel("F_start (MHz) :")
-        )
-
+    
+        # F_start
+        lay.addWidget(QLabel("F_start (MHz) :"))
         self.fstart_spin = QDoubleSpinBox()
-
-        self.fstart_spin.setRange(
-            50.0,
-            1900.0,
-        )
-
-        self.fstart_spin.setValue(
-            DEFAULT_PARAMS["f_start_hz"]
-            / 1e6
-        )
-
-        self.fstart_spin.setSuffix(
-            " MHz"
-        )
-
-        # Gris mais modifiable
-        self._set_fixed_param_style(
-            self.fstart_spin
-        )
-
-        lay.addWidget(
-            self.fstart_spin
-        )
-
-        # ======================================================
-        # F STOP
-        # ======================================================
-
-        lay.addWidget(
-            QLabel("F_stop (MHz) :")
-        )
-
+        self.fstart_spin.setRange(50.0, 1900.0)
+        self.fstart_spin.setValue(DEFAULT_PARAMS["f_start_hz"] / 1e6)
+        self.fstart_spin.setSuffix(" MHz")
+        self._set_fixed_param_style(self.fstart_spin)
+        lay.addWidget(self.fstart_spin)
+    
+        # F_stop
+        lay.addWidget(QLabel("F_stop (MHz) :"))
         self.fstop_spin = QDoubleSpinBox()
-
-        self.fstop_spin.setRange(
-            100.0,
-            6000.0,
-        )
-
-        self.fstop_spin.setValue(
-            DEFAULT_PARAMS["f_stop_hz"]
-            / 1e6
-        )
-
-        self.fstop_spin.setSuffix(
-            " MHz"
-        )
-
-        # Gris mais modifiable
-        self._set_fixed_param_style(
-            self.fstop_spin
-        )
-
-        lay.addWidget(
-            self.fstop_spin
-        )
-
-        # ======================================================
-        # PAS
-        #
-        # Paramètre laissé NORMAL
-        # ======================================================
-
-        lay.addWidget(
-            QLabel("Pas (MHz) :")
-        )
-
+        self.fstop_spin.setRange(100.0, 6000.0)
+        self.fstop_spin.setValue(DEFAULT_PARAMS["f_stop_hz"] / 1e6)
+        self.fstop_spin.setSuffix(" MHz")
+        self._set_fixed_param_style(self.fstop_spin)
+        lay.addWidget(self.fstop_spin)
+    
+        # Pas
+        lay.addWidget(QLabel("Pas (MHz) :"))
         self.step_spin = QDoubleSpinBox()
-
-        self.step_spin.setRange(
-            1.0,
-            100.0,
-        )
-
-        self.step_spin.setValue(
-            DEFAULT_PARAMS["step_hz"]
-            / 1e6
-        )
-
-        self.step_spin.setSuffix(
-            " MHz"
-        )
-
-        lay.addWidget(
-            self.step_spin
-        )
-
-        # ======================================================
-        # DURÉE UTILE
-        # ======================================================
-
-        lay.addWidget(
-            QLabel("Durée utile (ms) :")
-        )
-
+        self.step_spin.setRange(1.0, 100.0)
+        self.step_spin.setValue(DEFAULT_PARAMS["step_hz"] / 1e6)
+        self.step_spin.setSuffix(" MHz")
+        lay.addWidget(self.step_spin)
+    
+        # Gain fixe pour le spectre
+        lay.addWidget(QLabel("Gain spectre (dB) :"))
+        self.scan_gain_combo = QComboBox()
+    
+        for g in GAINS_LIST:
+            self.scan_gain_combo.addItem(f"{g:.0f} dB", g)
+    
+        default_scan_gain = DEFAULT_PARAMS.get("scan_gain_db", 40.0)
+    
+        if default_scan_gain in GAINS_LIST:
+            idx = GAINS_LIST.index(default_scan_gain)
+        else:
+            idx = 0
+    
+        self.scan_gain_combo.setCurrentIndex(idx)
+        lay.addWidget(self.scan_gain_combo)
+    
+        # Durée utile
+        lay.addWidget(QLabel("Durée utile (ms) :"))
         self.useful_spin = QDoubleSpinBox()
-
-        self.useful_spin.setRange(
-            1.0,
-            500.0,
-        )
-
-        self.useful_spin.setValue(
-            DEFAULT_PARAMS["useful_s"]
-            * 1000
-        )
-
-        self.useful_spin.setSuffix(
-            " ms"
-        )
-
-        # Gris mais modifiable
-        self._set_fixed_param_style(
-            self.useful_spin
-        )
-
-        lay.addWidget(
-            self.useful_spin
-        )
-
-        # ======================================================
-        # STABILISATION
-        # ======================================================
-
-        lay.addWidget(
-            QLabel("Stabilisation (ms) :")
-        )
-
+        self.useful_spin.setRange(1.0, 500.0)
+        self.useful_spin.setValue(DEFAULT_PARAMS["useful_s"] * 1000)
+        self.useful_spin.setSuffix(" ms")
+        self._set_fixed_param_style(self.useful_spin)
+        lay.addWidget(self.useful_spin)
+    
+        # Stabilisation
+        lay.addWidget(QLabel("Stabilisation (ms) :"))
         self.settle_spin = QDoubleSpinBox()
-
-        self.settle_spin.setRange(
-            1.0,
-            500.0,
-        )
-
-        self.settle_spin.setValue(
-            DEFAULT_PARAMS["settling_s"]
-            * 1000
-        )
-
-        self.settle_spin.setSuffix(
-            " ms"
-        )
-
-        # Gris mais modifiable
-        self._set_fixed_param_style(
-            self.settle_spin
-        )
-
-        lay.addWidget(
-            self.settle_spin
-        )
-
+        self.settle_spin.setRange(1.0, 500.0)
+        self.settle_spin.setValue(DEFAULT_PARAMS["settling_s"] * 1000)
+        self.settle_spin.setSuffix(" ms")
+        self._set_fixed_param_style(self.settle_spin)
+        lay.addWidget(self.settle_spin)
+    
         return box
 
     # ──────────────────────────────────────────────────────────
@@ -863,69 +755,24 @@ class ConfigPanel(QFrame):
     def get_params(self) -> dict:
 
         return {
-
-            "usrp_serial":
-                self.serial_edit
-                .text()
-                .strip(),
-
-            "antenna":
-                self.antenna_combo
-                .currentText(),
-
-            "rate_hz":
-                self.rate_spin
-                .value()
-                * 1e6,
-
-            "f_start_hz":
-                self.fstart_spin
-                .value()
-                * 1e6,
-
-            "f_stop_hz":
-                self.fstop_spin
-                .value()
-                * 1e6,
-
-            "step_hz":
-                self.step_spin
-                .value()
-                * 1e6,
-
-            "useful_s":
-                self.useful_spin
-                .value()
-                / 1000.0,
-
-            "settling_s":
-                self.settle_spin
-                .value()
-                / 1000.0,
-
-            "prpd_freq_hz":
-                self.prpd_freq_spin
-                .value()
-                * 1e6,
-
-            "prpd_gain_db":
-                float(
-                    self.prpd_gain_combo
-                    .currentData()
-                ),
-
-            "prpd_duration_s":
-                self.prpd_dur_spin
-                .value(),
-
-            "prpd_n_acq":
-                self.prpd_nacq_spin
-                .value(),
-
-            "prpd_f_offset_hz":
-                self.prpd_offset_spin
-                .value()
-                * 1e6,
+            "usrp_serial": self.serial_edit.text().strip(),
+            "antenna": self.antenna_combo.currentText(),
+            "rate_hz": self.rate_spin.value() * 1e6,
+        
+            "f_start_hz": self.fstart_spin.value() * 1e6,
+            "f_stop_hz": self.fstop_spin.value() * 1e6,
+            "step_hz": self.step_spin.value() * 1e6,
+        
+            "scan_gain_db": float(self.scan_gain_combo.currentData()),
+        
+            "useful_s": self.useful_spin.value() / 1000.0,
+            "settling_s": self.settle_spin.value() / 1000.0,
+        
+            "prpd_freq_hz": self.prpd_freq_spin.value() * 1e6,
+            "prpd_gain_db": float(self.prpd_gain_combo.currentData()),
+            "prpd_duration_s": self.prpd_dur_spin.value(),
+            "prpd_n_acq": self.prpd_nacq_spin.value(),
+            "prpd_f_offset_hz": self.prpd_offset_spin.value() * 1e6,
         }
 
     # ──────────────────────────────────────────────────────────
