@@ -2,10 +2,9 @@
 """
 ui/config_panel.py
 ------------------
-Panneau de configuration latéral (QFrame).
-
-Contient tous les paramètres USRP + boutons d'action.
+Panneau de configuration de l'IHM.
 """
+
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -25,30 +24,27 @@ from PyQt6.QtWidgets import (
 )
 
 from core.usrp_backend import DEFAULT_PARAMS
-from core.auto_gain import GAINS_DB as GAINS_LIST
+
+
+# Gains utilisés/calibrés
+GAINS_LIST = [0.0, 20.0, 40.0, 60.0, 76.0]
 
 
 class ConfigPanel(QFrame):
-    """
-    Panneau latéral de configuration.
 
-    Signaux :
-      start_scan()      → lancer le scan
-      stop_scan()       → arrêter
-      start_prpd()      → lancer le PRPD
-      stop_prpd()       → arrêter le PRPD
-      export_results()  → exporter
-      params_changed(dict)
-    """
+    start_scan = pyqtSignal()
+    stop_scan = pyqtSignal()
 
-    start_scan     = pyqtSignal()
-    stop_scan      = pyqtSignal()
-    start_prpd     = pyqtSignal()
-    stop_prpd      = pyqtSignal()
+    start_prpd = pyqtSignal()
+    stop_prpd = pyqtSignal()
+
     export_results = pyqtSignal()
+
     params_changed = pyqtSignal(dict)
 
-    def __init__(self, parent=None) -> None:
+
+    def __init__(self, parent=None):
+
         super().__init__(parent)
 
         self.setObjectName("ConfigPanel")
@@ -57,89 +53,74 @@ class ConfigPanel(QFrame):
         self._build_ui()
         self._connect_signals()
 
-    # ──────────────────────────────────────────────────────────
-    # Style paramètres normalement fixes
-    # ──────────────────────────────────────────────────────────
 
-    def _set_fixed_param_style(self, widget) -> None:
-        """
-        Applique un style gris aux paramètres que l'utilisateur
-        n'a normalement pas besoin de modifier.
+    # =========================================================
+    # STYLE PARAMÈTRES FIXES / RAREMENT MODIFIÉS
+    # =========================================================
 
-        IMPORTANT :
-        Le widget reste actif et totalement modifiable.
-        """
+    def _set_fixed_param_style(self, widget):
 
         widget.setStyleSheet(
             """
-            QLineEdit,
-            QComboBox,
-            QDoubleSpinBox,
-            QSpinBox {
-                background-color: #1b2027;
-                color: #7d8590;
-
-                border: 1px solid #30363d;
-                border-radius: 5px;
-
-                padding: 3px;
-            }
-
-            QLineEdit:hover,
-            QComboBox:hover,
-            QDoubleSpinBox:hover,
-            QSpinBox:hover {
-                background-color: #20262e;
-                border: 1px solid #484f58;
-            }
-
-            QLineEdit:focus,
-            QComboBox:focus,
-            QDoubleSpinBox:focus,
-            QSpinBox:focus {
-                background-color: #222831;
-                color: #c9d1d9;
-
-                border: 1px solid #6e7681;
-            }
+            background-color: #e8e8e8;
+            color: #555555;
             """
         )
 
-    # ──────────────────────────────────────────────────────────
-    # Construction UI
-    # ──────────────────────────────────────────────────────────
 
-    def _build_ui(self) -> None:
+    # =========================================================
+    # CONSTRUCTION UI
+    # =========================================================
+
+    def _build_ui(self):
+
         outer = QVBoxLayout(self)
 
-        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setContentsMargins(
+            0,
+            0,
+            0,
+            0
+        )
+
         outer.setSpacing(0)
 
-        # ------------------------------------------------------
+
+        # -----------------------------------------------------
         # Titre
-        # ------------------------------------------------------
+        # -----------------------------------------------------
 
-        title = QLabel("Configuration")
+        title = QLabel(
+            "Configuration"
+        )
 
-        title.setObjectName("PanelTitle")
+        title.setObjectName(
+            "PanelTitle"
+        )
 
         title.setAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
 
-        outer.addWidget(title)
+        outer.addWidget(
+            title
+        )
 
-        # ------------------------------------------------------
-        # Zone défilante
-        # ------------------------------------------------------
+
+        # -----------------------------------------------------
+        # Scroll
+        # -----------------------------------------------------
 
         scroll = QScrollArea()
 
-        scroll.setWidgetResizable(True)
+        scroll.setWidgetResizable(
+            True
+        )
 
         scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
+
 
         content = QWidget()
 
@@ -147,20 +128,24 @@ class ConfigPanel(QFrame):
             "ConfigContent"
         )
 
-        layout = QVBoxLayout(content)
+
+        layout = QVBoxLayout(
+            content
+        )
 
         layout.setContentsMargins(
             10,
             10,
             10,
-            10,
+            10
         )
 
         layout.setSpacing(8)
 
-        # ------------------------------------------------------
+
+        # -----------------------------------------------------
         # Groupes
-        # ------------------------------------------------------
+        # -----------------------------------------------------
 
         layout.addWidget(
             self._group_usrp()
@@ -171,32 +156,35 @@ class ConfigPanel(QFrame):
         )
 
         layout.addWidget(
-            self._group_agc()
-        )
-
-        layout.addWidget(
             self._group_prpd()
         )
 
         layout.addStretch()
 
-        scroll.setWidget(content)
 
-        outer.addWidget(scroll)
+        scroll.setWidget(
+            content
+        )
 
-        # ------------------------------------------------------
+        outer.addWidget(
+            scroll
+        )
+
+
+        # -----------------------------------------------------
         # Boutons
-        # ------------------------------------------------------
+        # -----------------------------------------------------
 
         outer.addWidget(
             self._build_action_buttons()
         )
 
-    # ──────────────────────────────────────────────────────────
-    # Groupe USRP
-    # ──────────────────────────────────────────────────────────
 
-    def _group_usrp(self) -> QGroupBox:
+    # =========================================================
+    # USRP
+    # =========================================================
+
+    def _group_usrp(self):
 
         box = QGroupBox(
             "USRP B200"
@@ -206,29 +194,31 @@ class ConfigPanel(QFrame):
             "ConfigGroup"
         )
 
-        lay = QVBoxLayout(box)
+        lay = QVBoxLayout(
+            box
+        )
 
-        # ======================================================
-        # Numéro de série
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Serial
+        # -----------------------------------------------------
 
         lay.addWidget(
-            QLabel("Numéro de série :")
+            QLabel(
+                "Numéro de série :"
+            )
         )
 
         self.serial_edit = QLineEdit(
-            DEFAULT_PARAMS["usrp_serial"]
-        )
-
-        self.serial_edit.setObjectName(
-            "ConfigInput"
+            DEFAULT_PARAMS[
+                "usrp_serial"
+            ]
         )
 
         self.serial_edit.setPlaceholderText(
-            "ex: 306BD15 (vide = auto)"
+            "ex: 306BD15"
         )
 
-        # Gris mais modifiable
         self._set_fixed_param_style(
             self.serial_edit
         )
@@ -237,12 +227,15 @@ class ConfigPanel(QFrame):
             self.serial_edit
         )
 
-        # ======================================================
+
+        # -----------------------------------------------------
         # Antenne
-        # ======================================================
+        # -----------------------------------------------------
 
         lay.addWidget(
-            QLabel("Antenne :")
+            QLabel(
+                "Antenne :"
+            )
         )
 
         self.antenna_combo = QComboBox()
@@ -250,11 +243,16 @@ class ConfigPanel(QFrame):
         self.antenna_combo.addItems(
             [
                 "RX2",
-                "TX/RX",
+                "TX/RX"
             ]
         )
 
-        # Gris mais modifiable
+        self.antenna_combo.setCurrentText(
+            DEFAULT_PARAMS[
+                "antenna"
+            ]
+        )
+
         self._set_fixed_param_style(
             self.antenna_combo
         )
@@ -263,35 +261,38 @@ class ConfigPanel(QFrame):
             self.antenna_combo
         )
 
-        # ======================================================
-        # Débit I/Q
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Sample rate
+        # -----------------------------------------------------
 
         lay.addWidget(
-            QLabel("Débit I/Q (MSps) :")
+            QLabel(
+                "Débit I/Q :"
+            )
         )
 
         self.rate_spin = QDoubleSpinBox()
 
         self.rate_spin.setRange(
             1.0,
-            56.0,
+            56.0
+        )
+
+        self.rate_spin.setDecimals(
+            2
         )
 
         self.rate_spin.setValue(
-            DEFAULT_PARAMS["rate_hz"]
-            / 1e6
-        )
-
-        self.rate_spin.setSingleStep(
-            1.0
+            DEFAULT_PARAMS[
+                "rate_hz"
+            ] / 1e6
         )
 
         self.rate_spin.setSuffix(
             " MSps"
         )
 
-        # Gris mais modifiable
         self._set_fixed_param_style(
             self.rate_spin
         )
@@ -300,122 +301,300 @@ class ConfigPanel(QFrame):
             self.rate_spin
         )
 
+
         return box
 
-    # ──────────────────────────────────────────────────────────
-    # Groupe Scan
-    # ──────────────────────────────────────────────────────────
 
-    def _group_scan(self) -> QGroupBox:
-        box = QGroupBox("Scan spectral")
-        box.setObjectName("ConfigGroup")
-        lay = QVBoxLayout(box)
-    
-        # F_start
-        lay.addWidget(QLabel("F_start (MHz) :"))
-        self.fstart_spin = QDoubleSpinBox()
-        self.fstart_spin.setRange(50.0, 1900.0)
-        self.fstart_spin.setValue(DEFAULT_PARAMS["f_start_hz"] / 1e6)
-        self.fstart_spin.setSuffix(" MHz")
-        self._set_fixed_param_style(self.fstart_spin)
-        lay.addWidget(self.fstart_spin)
-    
-        # F_stop
-        lay.addWidget(QLabel("F_stop (MHz) :"))
-        self.fstop_spin = QDoubleSpinBox()
-        self.fstop_spin.setRange(100.0, 6000.0)
-        self.fstop_spin.setValue(DEFAULT_PARAMS["f_stop_hz"] / 1e6)
-        self.fstop_spin.setSuffix(" MHz")
-        self._set_fixed_param_style(self.fstop_spin)
-        lay.addWidget(self.fstop_spin)
-    
-        # Pas
-        lay.addWidget(QLabel("Pas (MHz) :"))
-        self.step_spin = QDoubleSpinBox()
-        self.step_spin.setRange(1.0, 100.0)
-        self.step_spin.setValue(DEFAULT_PARAMS["step_hz"] / 1e6)
-        self.step_spin.setSuffix(" MHz")
-        lay.addWidget(self.step_spin)
-    
-        # Gain fixe pour le spectre
-        lay.addWidget(QLabel("Gain spectre (dB) :"))
-        self.scan_gain_combo = QComboBox()
-    
-        for g in GAINS_LIST:
-            self.scan_gain_combo.addItem(f"{g:.0f} dB", g)
-    
-        default_scan_gain = DEFAULT_PARAMS.get("scan_gain_db", 40.0)
-    
-        if default_scan_gain in GAINS_LIST:
-            idx = GAINS_LIST.index(default_scan_gain)
-        else:
-            idx = 0
-    
-        self.scan_gain_combo.setCurrentIndex(idx)
-        lay.addWidget(self.scan_gain_combo)
-    
-        # Durée utile
-        lay.addWidget(QLabel("Durée utile (ms) :"))
-        self.useful_spin = QDoubleSpinBox()
-        self.useful_spin.setRange(1.0, 500.0)
-        self.useful_spin.setValue(DEFAULT_PARAMS["useful_s"] * 1000)
-        self.useful_spin.setSuffix(" ms")
-        self._set_fixed_param_style(self.useful_spin)
-        lay.addWidget(self.useful_spin)
-    
-        # Stabilisation
-        lay.addWidget(QLabel("Stabilisation (ms) :"))
-        self.settle_spin = QDoubleSpinBox()
-        self.settle_spin.setRange(1.0, 500.0)
-        self.settle_spin.setValue(DEFAULT_PARAMS["settling_s"] * 1000)
-        self.settle_spin.setSuffix(" ms")
-        self._set_fixed_param_style(self.settle_spin)
-        lay.addWidget(self.settle_spin)
-    
-        return box
+    # =========================================================
+    # SCAN SPECTRAL
+    # =========================================================
 
-    # ──────────────────────────────────────────────────────────
-    # Groupe AGC
-    # ──────────────────────────────────────────────────────────
-
-    def _group_agc(self) -> QGroupBox:
+    def _group_scan(self):
 
         box = QGroupBox(
-            "Gain automatique (AGC)"
+            "Scan spectral"
         )
 
         box.setObjectName(
             "ConfigGroup"
         )
 
-        lay = QVBoxLayout(box)
-
-        info = QLabel(
-            "Gains disponibles : "
-            "0 / 20 / 40 / 60 / 76 dB\n"
-
-            "Départ : 40 dB\n"
-
-            "Saturation si max > Pmax dBFS\n"
-
-            "Saturation si min < Pmin dBFS\n"
+        lay = QVBoxLayout(
+            box
         )
 
-        info.setObjectName(
-            "InfoLabel"
+
+        # -----------------------------------------------------
+        # F START
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "F_start :"
+            )
         )
 
-        info.setWordWrap(True)
+        self.fstart_spin = QDoubleSpinBox()
 
-        lay.addWidget(info)
+        self.fstart_spin.setRange(
+            50.0,
+            6000.0
+        )
+
+        self.fstart_spin.setValue(
+            DEFAULT_PARAMS[
+                "f_start_hz"
+            ] / 1e6
+        )
+
+        self.fstart_spin.setSuffix(
+            " MHz"
+        )
+
+        self._set_fixed_param_style(
+            self.fstart_spin
+        )
+
+        lay.addWidget(
+            self.fstart_spin
+        )
+
+
+        # -----------------------------------------------------
+        # F STOP
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "F_stop :"
+            )
+        )
+
+        self.fstop_spin = QDoubleSpinBox()
+
+        self.fstop_spin.setRange(
+            50.0,
+            6000.0
+        )
+
+        self.fstop_spin.setValue(
+            DEFAULT_PARAMS[
+                "f_stop_hz"
+            ] / 1e6
+        )
+
+        self.fstop_spin.setSuffix(
+            " MHz"
+        )
+
+        self._set_fixed_param_style(
+            self.fstop_spin
+        )
+
+        lay.addWidget(
+            self.fstop_spin
+        )
+
+
+        # -----------------------------------------------------
+        # PAS
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "Pas :"
+            )
+        )
+
+        self.step_spin = QDoubleSpinBox()
+
+        self.step_spin.setRange(
+            1.0,
+            100.0
+        )
+
+        self.step_spin.setValue(
+            DEFAULT_PARAMS[
+                "step_hz"
+            ] / 1e6
+        )
+
+        self.step_spin.setSuffix(
+            " MHz"
+        )
+
+        lay.addWidget(
+            self.step_spin
+        )
+
+
+        # -----------------------------------------------------
+        # GAIN FIXE DU SCAN
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "Gain spectre :"
+            )
+        )
+
+        self.scan_gain_combo = QComboBox()
+
+        for gain in GAINS_LIST:
+
+            self.scan_gain_combo.addItem(
+                f"{gain:.0f} dB",
+                gain
+            )
+
+        default_gain = float(
+            DEFAULT_PARAMS.get(
+                "scan_gain_db",
+                40.0
+            )
+        )
+
+        for i in range(
+            self.scan_gain_combo.count()
+        ):
+
+            gain = float(
+                self.scan_gain_combo.itemData(i)
+            )
+
+            if gain == default_gain:
+
+                self.scan_gain_combo.setCurrentIndex(
+                    i
+                )
+
+                break
+
+        lay.addWidget(
+            self.scan_gain_combo
+        )
+
+
+        # -----------------------------------------------------
+        # LOW PASS CUTOFF
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "Low-pass cutoff :"
+            )
+        )
+
+        self.cutoff_spin = QDoubleSpinBox()
+
+        self.cutoff_spin.setRange(
+            0.1,
+            28.0
+        )
+
+        self.cutoff_spin.setDecimals(
+            2
+        )
+
+        self.cutoff_spin.setSingleStep(
+            0.1
+        )
+
+        self.cutoff_spin.setValue(
+            DEFAULT_PARAMS[
+                "lowpass_cutoff_hz"
+            ] / 1e6
+        )
+
+        self.cutoff_spin.setSuffix(
+            " MHz"
+        )
+
+        lay.addWidget(
+            self.cutoff_spin
+        )
+
+
+        # -----------------------------------------------------
+        # DURÉE UTILE
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "Durée utile :"
+            )
+        )
+
+        self.useful_spin = QDoubleSpinBox()
+
+        self.useful_spin.setRange(
+            1.0,
+            500.0
+        )
+
+        self.useful_spin.setValue(
+            DEFAULT_PARAMS[
+                "useful_s"
+            ] * 1000
+        )
+
+        self.useful_spin.setSuffix(
+            " ms"
+        )
+
+        self._set_fixed_param_style(
+            self.useful_spin
+        )
+
+        lay.addWidget(
+            self.useful_spin
+        )
+
+
+        # -----------------------------------------------------
+        # STABILISATION
+        # -----------------------------------------------------
+
+        lay.addWidget(
+            QLabel(
+                "Stabilisation :"
+            )
+        )
+
+        self.settle_spin = QDoubleSpinBox()
+
+        self.settle_spin.setRange(
+            1.0,
+            500.0
+        )
+
+        self.settle_spin.setValue(
+            DEFAULT_PARAMS[
+                "settling_s"
+            ] * 1000
+        )
+
+        self.settle_spin.setSuffix(
+            " ms"
+        )
+
+        self._set_fixed_param_style(
+            self.settle_spin
+        )
+
+        lay.addWidget(
+            self.settle_spin
+        )
+
 
         return box
 
-    # ──────────────────────────────────────────────────────────
-    # Groupe PRPD
-    # ──────────────────────────────────────────────────────────
 
-    def _group_prpd(self) -> QGroupBox:
+    # =========================================================
+    # PRPD
+    # =========================================================
+
+    def _group_prpd(self):
 
         box = QGroupBox(
             "PRPD"
@@ -425,25 +604,26 @@ class ConfigPanel(QFrame):
             "ConfigGroup"
         )
 
-        lay = QVBoxLayout(box)
+        lay = QVBoxLayout(
+            box
+        )
 
-        # ======================================================
-        # Fréquence
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Fréquence PRPD
+        # -----------------------------------------------------
 
         lay.addWidget(
             QLabel(
-                "Fréquence PRPD (MHz) :"
+                "Fréquence PRPD :"
             )
         )
 
-        self.prpd_freq_spin = (
-            QDoubleSpinBox()
-        )
+        self.prpd_freq_spin = QDoubleSpinBox()
 
         self.prpd_freq_spin.setRange(
             50.0,
-            6000.0,
+            6000.0
         )
 
         self.prpd_freq_spin.setDecimals(
@@ -453,8 +633,7 @@ class ConfigPanel(QFrame):
         self.prpd_freq_spin.setValue(
             DEFAULT_PARAMS[
                 "prpd_freq_hz"
-            ]
-            / 1e6
+            ] / 1e6
         )
 
         self.prpd_freq_spin.setSuffix(
@@ -465,62 +644,70 @@ class ConfigPanel(QFrame):
             self.prpd_freq_spin
         )
 
-        # ======================================================
-        # Gain
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Gain PRPD
+        # -----------------------------------------------------
 
         lay.addWidget(
             QLabel(
-                "Gain PRPD (dB) :"
+                "Gain PRPD :"
             )
         )
 
         self.prpd_gain_combo = QComboBox()
 
-        for g in GAINS_LIST:
+        for gain in GAINS_LIST:
 
             self.prpd_gain_combo.addItem(
-                f"{g:.0f} dB",
-                g,
+                f"{gain:.0f} dB",
+                gain
             )
 
-        if (
-            DEFAULT_PARAMS["prpd_gain_db"]
-            in GAINS_LIST
-        ):
-            idx = GAINS_LIST.index(
-                DEFAULT_PARAMS[
-                    "prpd_gain_db"
-                ]
-            )
-        else:
-            idx = 2
 
-        self.prpd_gain_combo.setCurrentIndex(
-            idx
+        default_gain = float(
+            DEFAULT_PARAMS[
+                "prpd_gain_db"
+            ]
         )
+
+        for i in range(
+            self.prpd_gain_combo.count()
+        ):
+
+            gain = float(
+                self.prpd_gain_combo.itemData(i)
+            )
+
+            if gain == default_gain:
+
+                self.prpd_gain_combo.setCurrentIndex(
+                    i
+                )
+
+                break
+
 
         lay.addWidget(
             self.prpd_gain_combo
         )
 
-        # ======================================================
-        # Durée
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Durée PRPD
+        # -----------------------------------------------------
 
         lay.addWidget(
             QLabel(
-                "Durée acquisition (s) :"
+                "Durée acquisition :"
             )
         )
 
-        self.prpd_dur_spin = (
-            QDoubleSpinBox()
-        )
+        self.prpd_dur_spin = QDoubleSpinBox()
 
         self.prpd_dur_spin.setRange(
             0.5,
-            60.0,
+            60.0
         )
 
         self.prpd_dur_spin.setValue(
@@ -537,9 +724,10 @@ class ConfigPanel(QFrame):
             self.prpd_dur_spin
         )
 
-        # ======================================================
+
+        # -----------------------------------------------------
         # Nombre acquisitions
-        # ======================================================
+        # -----------------------------------------------------
 
         lay.addWidget(
             QLabel(
@@ -547,13 +735,11 @@ class ConfigPanel(QFrame):
             )
         )
 
-        self.prpd_nacq_spin = (
-            QSpinBox()
-        )
+        self.prpd_nacq_spin = QSpinBox()
 
         self.prpd_nacq_spin.setRange(
             1,
-            20,
+            20
         )
 
         self.prpd_nacq_spin.setValue(
@@ -566,24 +752,22 @@ class ConfigPanel(QFrame):
             self.prpd_nacq_spin
         )
 
-        # ======================================================
-        # Offset fréquentiel
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Offset
+        # -----------------------------------------------------
 
         lay.addWidget(
             QLabel(
-                "Décalage fréquentiel "
-                "(MHz) :"
+                "Décalage fréquentiel :"
             )
         )
 
-        self.prpd_offset_spin = (
-            QDoubleSpinBox()
-        )
+        self.prpd_offset_spin = QDoubleSpinBox()
 
         self.prpd_offset_spin.setRange(
             -6.0,
-            6.0,
+            6.0
         )
 
         self.prpd_offset_spin.setDecimals(
@@ -593,8 +777,7 @@ class ConfigPanel(QFrame):
         self.prpd_offset_spin.setValue(
             DEFAULT_PARAMS[
                 "prpd_f_offset_hz"
-            ]
-            / 1e6
+            ] / 1e6
         )
 
         self.prpd_offset_spin.setSuffix(
@@ -605,38 +788,41 @@ class ConfigPanel(QFrame):
             self.prpd_offset_spin
         )
 
+
         return box
 
-    # ──────────────────────────────────────────────────────────
-    # Boutons
-    # ──────────────────────────────────────────────────────────
 
-    def _build_action_buttons(
-        self
-    ) -> QWidget:
+    # =========================================================
+    # BOUTONS
+    # =========================================================
 
-        w = QWidget()
+    def _build_action_buttons(self):
 
-        w.setObjectName(
+        widget = QWidget()
+
+        widget.setObjectName(
             "ActionBar"
         )
 
-        lay = QVBoxLayout(w)
+        lay = QVBoxLayout(
+            widget
+        )
 
         lay.setContentsMargins(
             10,
             8,
             10,
-            12,
+            12
         )
 
         lay.setSpacing(6)
 
-        # ======================================================
-        # SCAN
-        # ======================================================
 
-        row1 = QHBoxLayout()
+        # -----------------------------------------------------
+        # Scan
+        # -----------------------------------------------------
+
+        row_scan = QHBoxLayout()
 
         self.btn_scan = QPushButton(
             "Démarrer Scan"
@@ -658,21 +844,25 @@ class ConfigPanel(QFrame):
             False
         )
 
-        row1.addWidget(
+
+        row_scan.addWidget(
             self.btn_scan
         )
 
-        row1.addWidget(
+        row_scan.addWidget(
             self.btn_stop_scan
         )
 
-        lay.addLayout(row1)
+        lay.addLayout(
+            row_scan
+        )
 
-        # ======================================================
+
+        # -----------------------------------------------------
         # PRPD
-        # ======================================================
+        # -----------------------------------------------------
 
-        row2 = QHBoxLayout()
+        row_prpd = QHBoxLayout()
 
         self.btn_prpd = QPushButton(
             "Démarrer PRPD"
@@ -694,19 +884,23 @@ class ConfigPanel(QFrame):
             False
         )
 
-        row2.addWidget(
+
+        row_prpd.addWidget(
             self.btn_prpd
         )
 
-        row2.addWidget(
+        row_prpd.addWidget(
             self.btn_stop_prpd
         )
 
-        lay.addLayout(row2)
+        lay.addLayout(
+            row_prpd
+        )
 
-        # ======================================================
-        # EXPORT
-        # ======================================================
+
+        # -----------------------------------------------------
+        # Export
+        # -----------------------------------------------------
 
         self.btn_export = QPushButton(
             "Exporter résultats"
@@ -720,13 +914,15 @@ class ConfigPanel(QFrame):
             self.btn_export
         )
 
-        return w
 
-    # ──────────────────────────────────────────────────────────
-    # Connexions
-    # ──────────────────────────────────────────────────────────
+        return widget
 
-    def _connect_signals(self) -> None:
+
+    # =========================================================
+    # CONNEXIONS
+    # =========================================================
+
+    def _connect_signals(self):
 
         self.btn_scan.clicked.connect(
             self.start_scan
@@ -748,58 +944,102 @@ class ConfigPanel(QFrame):
             self.export_results
         )
 
-    # ──────────────────────────────────────────────────────────
-    # Lecture paramètres
-    # ──────────────────────────────────────────────────────────
 
-    def get_params(self) -> dict:
+    # =========================================================
+    # RÉCUPÉRATION DES PARAMÈTRES
+    # =========================================================
+
+    def get_params(self):
 
         return {
-            "usrp_serial": self.serial_edit.text().strip(),
-            "antenna": self.antenna_combo.currentText(),
-            "rate_hz": self.rate_spin.value() * 1e6,
-        
-            "f_start_hz": self.fstart_spin.value() * 1e6,
-            "f_stop_hz": self.fstop_spin.value() * 1e6,
-            "step_hz": self.step_spin.value() * 1e6,
-        
-            "scan_gain_db": float(self.scan_gain_combo.currentData()),
-        
-            "useful_s": self.useful_spin.value() / 1000.0,
-            "settling_s": self.settle_spin.value() / 1000.0,
-        
-            "prpd_freq_hz": self.prpd_freq_spin.value() * 1e6,
-            "prpd_gain_db": float(self.prpd_gain_combo.currentData()),
-            "prpd_duration_s": self.prpd_dur_spin.value(),
-            "prpd_n_acq": self.prpd_nacq_spin.value(),
-            "prpd_f_offset_hz": self.prpd_offset_spin.value() * 1e6,
+
+            # USRP
+            "usrp_serial":
+                self.serial_edit.text().strip(),
+
+            "antenna":
+                self.antenna_combo.currentText(),
+
+            "rate_hz":
+                self.rate_spin.value()
+                * 1e6,
+
+
+            # Scan
+            "f_start_hz":
+                self.fstart_spin.value()
+                * 1e6,
+
+            "f_stop_hz":
+                self.fstop_spin.value()
+                * 1e6,
+
+            "step_hz":
+                self.step_spin.value()
+                * 1e6,
+
+            "scan_gain_db":
+                float(
+                    self.scan_gain_combo.currentData()
+                ),
+
+            "lowpass_cutoff_hz":
+                self.cutoff_spin.value()
+                * 1e6,
+
+            "useful_s":
+                self.useful_spin.value()
+                / 1000.0,
+
+            "settling_s":
+                self.settle_spin.value()
+                / 1000.0,
+
+
+            # PRPD
+            "prpd_freq_hz":
+                self.prpd_freq_spin.value()
+                * 1e6,
+
+            "prpd_gain_db":
+                float(
+                    self.prpd_gain_combo.currentData()
+                ),
+
+            "prpd_duration_s":
+                self.prpd_dur_spin.value(),
+
+            "prpd_n_acq":
+                self.prpd_nacq_spin.value(),
+
+            "prpd_f_offset_hz":
+                self.prpd_offset_spin.value()
+                * 1e6,
         }
 
-    # ──────────────────────────────────────────────────────────
-    # Fréquence PRPD
-    # ──────────────────────────────────────────────────────────
+
+    # =========================================================
+    # FRÉQUENCE PRPD CHOISIE DEPUIS LE SPECTRE
+    # =========================================================
 
     def set_prpd_freq(
         self,
-        freq_mhz: float,
-    ) -> None:
-        """
-        Appelé quand l'utilisateur
-        clique sur le spectre.
-        """
+        freq_mhz
+    ):
 
         self.prpd_freq_spin.setValue(
             freq_mhz
         )
 
-    # ──────────────────────────────────────────────────────────
-    # État scan
-    # ──────────────────────────────────────────────────────────
+
+    # =========================================================
+    # ÉTAT SCAN
+    # =========================================================
 
     def set_scanning(
         self,
-        scanning: bool,
-    ) -> None:
+        scanning
+    ):
 
         self.btn_scan.setEnabled(
             not scanning
@@ -813,14 +1053,15 @@ class ConfigPanel(QFrame):
             not scanning
         )
 
-    # ──────────────────────────────────────────────────────────
-    # État PRPD
-    # ──────────────────────────────────────────────────────────
+
+    # =========================================================
+    # ÉTAT PRPD
+    # =========================================================
 
     def set_prpd_running(
         self,
-        running: bool,
-    ) -> None:
+        running
+    ):
 
         self.btn_prpd.setEnabled(
             not running

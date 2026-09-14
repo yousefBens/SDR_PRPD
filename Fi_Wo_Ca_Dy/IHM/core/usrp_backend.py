@@ -63,7 +63,7 @@ DEFAULT_PARAMS = {
     "f_stop_hz":         2.0e9,
     "step_hz":           12e6,
 
-    "rate_hz":           12e6,
+    "rate_hz":           56e6,
 
     # Gain FIXE pour le spectre
     "scan_gain_db":      40.0,
@@ -75,7 +75,7 @@ DEFAULT_PARAMS = {
     "settling_s":        0.100,
 
     # Traitement spectre
-    "lowpass_cutoff_hz": 5.99e6,
+    "lowpass_cutoff_hz": 27.99e6,
     "filter_order":      4,
     "robust_percentile": 99.99,
     "filter_edge_s":     0.0002,
@@ -84,7 +84,7 @@ DEFAULT_PARAMS = {
     # PRPD
     "prpd_freq_hz":      1.196e9,
     "prpd_gain_db":      40.0,
-    "prpd_duration_s":   3.0,
+    "prpd_duration_s":   1.0,
     "prpd_f_offset_hz":  0.0,
     "prpd_n_acq":        1,
 }
@@ -605,12 +605,45 @@ class ScanThread(QThread):
 # PRPD
 # =============================================================
 
+# ──────────────────────────────────────────────────────────────
+# Thread PRPD
+# ──────────────────────────────────────────────────────────────
+
 class PrpdThread(QThread):
+    """
+    Acquisition et traitement PRPD sur une fréquence fixe.
+
+    Signaux Qt :
+      acq_done(
+          phases,
+          amps,
+          info,
+          spectre_freqs,
+          spectre_dbfs,
+          iq_samples
+      )
+
+      progress(int)
+      log_message(str)
+      error(str)
+    """
+
+    # ----------------------------------------------------------
+    # IMPORTANT :
+    # 6 paramètres maintenant :
+    #   1 phases
+    #   2 amplitudes
+    #   3 info
+    #   4 fréquences spectre
+    #   5 amplitudes spectre
+    #   6 IQ brut
+    # ----------------------------------------------------------
 
     acq_done = pyqtSignal(
         object,
         object,
         dict,
+        object,
         object,
         object,
     )
@@ -638,11 +671,23 @@ class PrpdThread(QThread):
 
         self._stop_flag = False
 
+    # ----------------------------------------------------------
+
     def stop(self) -> None:
         self._stop_flag = True
 
-    def _log(self, msg: str) -> None:
-        self.log_message.emit(msg)
+    # ----------------------------------------------------------
+
+    def _log(
+        self,
+        msg: str,
+    ) -> None:
+
+        self.log_message.emit(
+            msg
+        )
+
+    # ----------------------------------------------------------
 
     def run(self) -> None:
 
@@ -650,8 +695,15 @@ class PrpdThread(QThread):
 
         p = self.params
 
-        # Connexion USRP
+        # ======================================================
+        # CONNEXION USRP
+        # ======================================================
+
         try:
+
+            self._log(
+                "Connexion USRP pour PRPD..."
+            )
 
             serial_arg = (
                 f"serial={p['usrp_serial']}"
@@ -666,33 +718,48 @@ class PrpdThread(QThread):
         except Exception as exc:
 
             self.error.emit(
-                f"USRP non disponible :\n{exc}"
+                "USRP non disponible :\n"
+                f"{exc}"
             )
 
             return
 
-        all_phases = []
-        all_amps = []
-        all_info = []
+        # ======================================================
+        # TABLEAUX POUR TOUTES LES ACQUISITIONS
+        # ======================================================
 
-        n_acq = p[
-            "prpd_n_acq"
-        ]
+        all_phases: list[np.ndarray] = []
+        all_amps: list[np.ndarray] = []
+        all_info: list[dict] = []
 
-        # =====================================================
-        # Acquisitions PRPD
-        # =====================================================
+        # IMPORTANT :
+        # On conserve maintenant les IQ bruts.
+        all_iq_samples: list[np.ndarray] = []
 
-        for i in range(n_acq):
+        n_acq = int(
+            p["prpd_n_acq"]
+        )
+
+        # ======================================================
+        # ACQUISITIONS PRPD
+        # ======================================================
+
+        for i in range(
+            n_acq
+        ):
 
             if self._stop_flag:
                 break
 
+            # --------------------------------------------------
+            # Synchronisation 50 Hz
+            # --------------------------------------------------
+
             self._log(
-                f"PRPD {i + 1}/{n_acq}"
+                f"Synchronisation PPS "
+                f"({i + 1}/{n_acq})..."
             )
 
-            # Synchronisation 50 Hz
             try:
 
                 sync_on_external_50hz_pps(
@@ -702,20 +769,45 @@ class PrpdThread(QThread):
             except Exception as exc:
 
                 self._log(
-                    f"PPS non disponible : {exc}"
+                    f"  PPS sync échoué : "
+                    f"{exc} — "
+                    f"acquisition sans sync."
                 )
 
-            # Progression acquisition
-            def progress_cb(pct):
+            # --------------------------------------------------
+            # Informations acquisition
+            # --------------------------------------------------
+
+            self._log(
+                f"Acquisition PRPD "
+                f"{i + 1}/{n_acq} — "
+                f"{p['prpd_freq_hz']/1e6:.3f} MHz | "
+                f"{p['prpd_gain_db']:.0f} dB | "
+                f"Fs={p['rate_hz']/1e6:.1f} MS/s | "
+                f"T={p['prpd_duration_s']:.3f} s"
+            )
+
+            # --------------------------------------------------
+            # Progression
+            # --------------------------------------------------
+
+            def _prog(
+                pct: int,
+            ) -> None:
+
+                global_pct = int(
+                    i / n_acq * 100
+                    + pct / n_acq
+                )
 
                 self.progress.emit(
-                    int(
-                        i / n_acq * 100
-                        + pct / n_acq
-                    )
+                    global_pct
                 )
 
-            # Acquisition
+            # ==================================================
+            # ACQUISITION IQ
+            # ==================================================
+
             try:
 
                 samples, t_start = (
@@ -723,60 +815,131 @@ class PrpdThread(QThread):
                         usrp,
 
                         freq_hz=
-                            p["prpd_freq_hz"],
+                            p[
+                                "prpd_freq_hz"
+                            ],
 
                         rate_hz=
-                            p["rate_hz"],
+                            p[
+                                "rate_hz"
+                            ],
 
                         duration_s=
-                            p["prpd_duration_s"],
+                            p[
+                                "prpd_duration_s"
+                            ],
 
                         gain_db=
-                            p["prpd_gain_db"],
+                            p[
+                                "prpd_gain_db"
+                            ],
 
                         channel=
-                            p["channel"],
+                            p[
+                                "channel"
+                            ],
 
                         antenna=
-                            p["antenna"],
+                            p[
+                                "antenna"
+                            ],
 
                         progress_cb=
-                            progress_cb,
+                            _prog,
                     )
                 )
 
             except Exception as exc:
 
                 self.error.emit(
-                    f"Erreur PRPD :\n{exc}"
+                    "Erreur acquisition PRPD :\n"
+                    f"{exc}"
                 )
 
                 return
 
+            # --------------------------------------------------
+            # Vérification
+            # --------------------------------------------------
+
             if len(samples) == 0:
+
+                self._log(
+                    "  Acquisition IQ vide."
+                )
+
                 continue
 
-            # Traitement
+            # ==================================================
+            # CONSERVATION IQ BRUT
+            # ==================================================
+
+            # IMPORTANT :
+            # samples correspond exactement aux IQ qui seront
+            # utilisés pour calculer le PRPD.
+            #
+            # np.asarray garantit le type complex64.
+            #
+            # copy() évite de garder une référence vers un
+            # buffer qui pourrait être réutilisé/modifié.
+            # ==================================================
+
+            iq_copy = np.asarray(
+                samples,
+                dtype=np.complex64,
+            ).copy()
+
+            all_iq_samples.append(
+                iq_copy
+            )
+
+            self._log(
+                f"  IQ capturé : "
+                f"{len(iq_copy):,} samples "
+                f"({iq_copy.nbytes / 1024**2:.1f} MiB)"
+            )
+
+            # ==================================================
+            # TRAITEMENT PRPD
+            # ==================================================
+
             phases, amps, info = (
                 process_pd_signal(
                     samples,
 
                     rate_hz=
-                        p["rate_hz"],
+                        p[
+                            "rate_hz"
+                        ],
 
                     t_start=
                         t_start,
 
                     f_offset_hz=
-                        p["prpd_f_offset_hz"],
+                        p[
+                            "prpd_f_offset_hz"
+                        ],
 
                     gain_calibration=
                         self.gain_calibration,
 
                     freq_hz=
-                        p["prpd_freq_hz"],
+                        p[
+                            "prpd_freq_hz"
+                        ],
                 )
             )
+
+            self._log(
+                f"  {info['n_pulses']} "
+                f"pulses détectées | "
+                f"Unité : "
+                f"{info['unit']}"
+            )
+
+            # --------------------------------------------------
+            # Stockage résultats
+            # --------------------------------------------------
 
             all_phases.append(
                 phases
@@ -790,70 +953,201 @@ class PrpdThread(QThread):
                 info
             )
 
-        if not all_info:
+        # ======================================================
+        # VÉRIFICATION FIN ACQUISITION
+        # ======================================================
+
+        if not all_iq_samples:
 
             self.error.emit(
-                "Aucune acquisition PRPD valide."
+                "Aucune acquisition IQ valide."
             )
 
             return
 
-        # =====================================================
-        # Fusion
-        # =====================================================
+        # ======================================================
+        # CONCATÉNATION IQ
+        # ======================================================
+
+        # Si n_acq = 1 :
+        #     iq_all = acquisition unique
+        #
+        # Si n_acq > 1 :
+        #     toutes les acquisitions sont concaténées.
+        # ======================================================
+
+        if len(
+            all_iq_samples
+        ) == 1:
+
+            iq_all = (
+                all_iq_samples[0]
+            )
+
+        else:
+
+            iq_all = np.concatenate(
+                all_iq_samples
+            )
+
+        # ======================================================
+        # CONCATÉNATION PRPD
+        # ======================================================
 
         valid_phases = [
             x
             for x in all_phases
-            if len(x)
+            if len(x) > 0
         ]
 
         valid_amps = [
             x
             for x in all_amps
-            if len(x)
+            if len(x) > 0
         ]
 
-        phases_all = (
-            np.concatenate(valid_phases)
-            if valid_phases
-            else np.array([])
-        )
+        if valid_phases:
 
-        amps_all = (
-            np.concatenate(valid_amps)
-            if valid_amps
-            else np.array([])
-        )
+            phases_all = np.concatenate(
+                valid_phases
+            )
 
-        info = {
+            amps_all = np.concatenate(
+                valid_amps
+            )
+
+        else:
+
+            phases_all = np.array(
+                [],
+                dtype=float,
+            )
+
+            amps_all = np.array(
+                [],
+                dtype=float,
+            )
+
+        # ======================================================
+        # INFORMATIONS
+        # ======================================================
+
+        info_merged = {
+
             "n_pulses":
-                sum(
-                    x["n_pulses"]
-                    for x in all_info
+                int(
+                    sum(
+                        x.get(
+                            "n_pulses",
+                            0,
+                        )
+                        for x in all_info
+                    )
                 ),
 
             "unit":
-                all_info[0]["unit"],
+                (
+                    all_info[0].get(
+                        "unit",
+                        "dBFS",
+                    )
+                    if all_info
+                    else "dBFS"
+                ),
 
             "n_acq":
-                len(all_info),
+                len(
+                    all_iq_samples
+                ),
+
+            "n_iq_samples":
+                int(
+                    len(
+                        iq_all
+                    )
+                ),
+
+            "iq_dtype":
+                str(
+                    iq_all.dtype
+                ),
+
+            "iq_size_mb":
+                float(
+                    iq_all.nbytes
+                    / 1024**2
+                ),
+
+            "sample_rate_hz":
+                float(
+                    p[
+                        "rate_hz"
+                    ]
+                ),
+
+            "frequency_hz":
+                float(
+                    p[
+                        "prpd_freq_hz"
+                    ]
+                ),
+
+            "gain_db":
+                float(
+                    p[
+                        "prpd_gain_db"
+                    ]
+                ),
+
+            "duration_s":
+                float(
+                    p[
+                        "prpd_duration_s"
+                    ]
+                ),
         }
 
-        # Pas de spectre FFT PRPD
-        spec_freqs = np.array([])
-        spec_dbfs = np.array([])
+        # ======================================================
+        # PAS DE FFT ICI
+        # ======================================================
+
+        # Le spectre principal est déjà calculé par ScanThread.
+        # On garde ces tableaux pour compatibilité avec l'IHM.
+
+        spec_freqs = np.array(
+            [],
+            dtype=float,
+        )
+
+        spec_dbfs = np.array(
+            [],
+            dtype=float,
+        )
+
+        # ======================================================
+        # LOG FINAL
+        # ======================================================
+
+        self._log(
+            f"PRPD terminé | "
+            f"{len(phases_all)} pulses | "
+            f"{len(iq_all):,} IQ samples | "
+            f"{iq_all.nbytes / 1024**2:.1f} MiB"
+        )
+
+        # ======================================================
+        # ENVOI À L'IHM
+        # ======================================================
 
         self.acq_done.emit(
             phases_all,
             amps_all,
-            info,
+            info_merged,
             spec_freqs,
             spec_dbfs,
+            iq_all,
         )
 
-        self.progress.emit(100)
-
-        self._log(
-            "PRPD terminé."
+        self.progress.emit(
+            100
         )

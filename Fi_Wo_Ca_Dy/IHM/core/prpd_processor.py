@@ -18,8 +18,8 @@ from scipy.signal import butter, find_peaks, sosfiltfilt
 # ──────────────────────────────────────────────────────────────
 
 PRPD_NOISE_STD_MULT: float = 2.0   # seuil = médiane + N*std
-PRPD_MIN_DISTANCE_US: float = 200.0  # µs entre deux pulses
-PRPD_CUTOFF_HZ: float = 5e6         # filtre passe-bas IF
+PRPD_MIN_DISTANCE_US: float = 20  # µs entre deux pulses
+PRPD_CUTOFF_HZ: float = 24.99e6         # filtre passe-bas IF
 PRPD_FILTER_ORDER: int = 4
 EPSILON: float = 1e-12
 
