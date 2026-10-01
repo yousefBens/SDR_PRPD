@@ -5,7 +5,12 @@ core/usrp_backend.py
 Backend USRP pour :
   - Scan spectral avec gain fixe
   - Acquisition PRPD
+
+Le même paramètre lowpass_cutoff_hz est utilisé pour :
+  - le scan spectral
+  - le traitement PRPD
 """
+
 from __future__ import annotations
 
 import time
@@ -58,11 +63,15 @@ DEFAULT_PARAMS = {
     "channel":           0,
     "antenna":           "RX2",
 
+    # ---------------------------------------------------------
     # Scan spectral
+    # ---------------------------------------------------------
+
     "f_start_hz":        100e6,
     "f_stop_hz":         2.0e9,
     "step_hz":           12e6,
 
+    # Sampling rate commun au scan et au PRPD
     "rate_hz":           56e6,
 
     # Gain FIXE pour le spectre
@@ -74,14 +83,25 @@ DEFAULT_PARAMS = {
     "useful_s":          0.021,
     "settling_s":        0.100,
 
-    # Traitement spectre
+    # ---------------------------------------------------------
+    # Traitement commun
+    #
+    # Ce cutoff est maintenant utilisé par :
+    #   1. Scan spectral
+    #   2. PRPD
+    # ---------------------------------------------------------
+
     "lowpass_cutoff_hz": 27.99e6,
+
     "filter_order":      4,
     "robust_percentile": 99.99,
     "filter_edge_s":     0.0002,
     "clipping_amp":      0.98,
 
+    # ---------------------------------------------------------
     # PRPD
+    # ---------------------------------------------------------
+
     "prpd_freq_hz":      1.196e9,
     "prpd_gain_db":      40.0,
     "prpd_duration_s":   1.0,
@@ -118,8 +138,16 @@ class ScanThread(QThread):
         self.cal_calibrations = cal_calibrations
         self._stop_flag = False
 
+    # ---------------------------------------------------------
+    # Stop
+    # ---------------------------------------------------------
+
     def stop(self) -> None:
         self._stop_flag = True
+
+    # ---------------------------------------------------------
+    # Log
+    # ---------------------------------------------------------
 
     def _log(self, msg: str) -> None:
         self.log_message.emit(msg)
@@ -210,6 +238,10 @@ class ScanThread(QThread):
 
             total += count
 
+        # -----------------------------------------------------
+        # Suppression du début de l'acquisition
+        # -----------------------------------------------------
+
         discard = int(
             p["discard_s"]
             * p["rate_hz"]
@@ -218,7 +250,7 @@ class ScanThread(QThread):
         return samples[discard:]
 
     # ---------------------------------------------------------
-    # Métriques
+    # Métriques scan
     # ---------------------------------------------------------
 
     def _compute_metrics(
@@ -231,10 +263,21 @@ class ScanThread(QThread):
 
         p = self.params
 
+        # -----------------------------------------------------
+        # Application du filtre passe-bas
+        #
+        # Le filtre est construit dans run() avec
+        # p["lowpass_cutoff_hz"].
+        # -----------------------------------------------------
+
         filtered = sosfiltfilt(
             sos,
             samples,
         )
+
+        # -----------------------------------------------------
+        # Suppression des bords du filtre
+        # -----------------------------------------------------
 
         edge = int(
             p["filter_edge_s"]
@@ -250,12 +293,23 @@ class ScanThread(QThread):
                 -edge
             ]
 
+        # -----------------------------------------------------
+        # Enveloppe IQ
+        # -----------------------------------------------------
+
         env = np.abs(filtered)
 
+        # -----------------------------------------------------
+        # Calcul métriques
+        # -----------------------------------------------------
+
         return {
+
             "max_dbfs":
                 amplitude_to_dbfs(
-                    float(np.max(env))
+                    float(
+                        np.max(env)
+                    )
                 ),
 
             "robust_dbfs":
@@ -270,7 +324,9 @@ class ScanThread(QThread):
 
             "median_dbfs":
                 amplitude_to_dbfs(
-                    float(np.median(env))
+                    float(
+                        np.median(env)
+                    )
                 ),
 
             "clipping_fraction":
@@ -297,11 +353,13 @@ class ScanThread(QThread):
 
         p = self.params
 
+        # Sampling rate
         usrp.set_rx_rate(
             p["rate_hz"],
             p["channel"],
         )
 
+        # Antenne
         usrp.set_rx_antenna(
             p["antenna"],
             p["channel"],
@@ -313,6 +371,7 @@ class ScanThread(QThread):
             p["channel"],
         )
 
+        # Tuning
         tune_req = uhd.types.TuneRequest(
             freq_hz,
             p["lo_offset_hz"],
@@ -323,6 +382,7 @@ class ScanThread(QThread):
             p["channel"],
         )
 
+        # Stabilisation
         time.sleep(
             p["settling_s"]
         )
@@ -339,7 +399,10 @@ class ScanThread(QThread):
             )
         )
 
-        return actual_freq, actual_gain
+        return (
+            actual_freq,
+            actual_gain
+        )
 
     # ---------------------------------------------------------
     # Calibration correspondant au gain
@@ -392,12 +455,34 @@ class ScanThread(QThread):
             p["scan_gain_db"]
         )
 
-        # Filtre
-        nyq = p["rate_hz"] / 2.0
+        # =====================================================
+        # FILTRE SCAN
+        #
+        # Utilise directement le cutoff choisi dans l'IHM.
+        # =====================================================
 
+        nyq = (
+            p["rate_hz"]
+            / 2.0
+        )
+
+        requested_cutoff = float(
+            p["lowpass_cutoff_hz"]
+        )
+
+        if requested_cutoff <= 0:
+
+            self.error.emit(
+                "Low-pass cutoff invalide : "
+                "la valeur doit être > 0."
+            )
+
+            return
+
+        # Protection Nyquist
         cutoff = min(
-            p["lowpass_cutoff_hz"],
-            nyq * 0.95,
+            requested_cutoff,
+            nyq * 0.9999,
         )
 
         sos = butter(
@@ -407,7 +492,16 @@ class ScanThread(QThread):
             output="sos",
         )
 
-        # Samples
+        self._log(
+            f"Filtre scan : "
+            f"Fc={cutoff/1e6:.3f} MHz | "
+            f"Fs={p['rate_hz']/1e6:.3f} MS/s"
+        )
+
+        # =====================================================
+        # Nombre de samples
+        # =====================================================
+
         n_total = int(
             (
                 p["discard_s"]
@@ -416,7 +510,10 @@ class ScanThread(QThread):
             * p["rate_hz"]
         )
 
-        # Fréquences
+        # =====================================================
+        # Fréquences du scan
+        # =====================================================
+
         freqs_hz = np.arange(
             p["f_start_hz"],
             p["f_stop_hz"]
@@ -424,9 +521,14 @@ class ScanThread(QThread):
             p["step_hz"],
         )
 
-        n_freqs = len(freqs_hz)
+        n_freqs = len(
+            freqs_hz
+        )
 
+        # =====================================================
         # Connexion USRP
+        # =====================================================
+
         try:
 
             serial_arg = (
@@ -453,7 +555,9 @@ class ScanThread(QThread):
 
         self._log(
             f"Scan : {n_freqs} fréquences | "
-            f"Gain fixe = {fixed_gain:.0f} dB"
+            f"Gain fixe = {fixed_gain:.0f} dB | "
+            f"Fs = {p['rate_hz']/1e6:.2f} MS/s | "
+            f"Cutoff = {cutoff/1e6:.2f} MHz"
         )
 
         results = []
@@ -473,7 +577,7 @@ class ScanThread(QThread):
             try:
 
                 # ---------------------------------------------
-                # Configuration fréquence + gain FIXE
+                # Configuration fréquence + gain
                 # ---------------------------------------------
 
                 actual_freq, actual_gain = (
@@ -495,6 +599,9 @@ class ScanThread(QThread):
 
                 # ---------------------------------------------
                 # Métriques
+                #
+                # Les samples passent par le LPF construit
+                # avec le cutoff de l'IHM.
                 # ---------------------------------------------
 
                 metrics = self._compute_metrics(
@@ -527,6 +634,7 @@ class ScanThread(QThread):
                 # ---------------------------------------------
 
                 result = FreqResult(
+
                     freq_mhz=
                         actual_freq / 1e6,
 
@@ -563,7 +671,9 @@ class ScanThread(QThread):
                         "OK",
                 )
 
-                results.append(result)
+                results.append(
+                    result
+                )
 
                 self.result_ready.emit(
                     result
@@ -605,39 +715,36 @@ class ScanThread(QThread):
 # PRPD
 # =============================================================
 
-# ──────────────────────────────────────────────────────────────
-# Thread PRPD
-# ──────────────────────────────────────────────────────────────
-
 class PrpdThread(QThread):
     """
     Acquisition et traitement PRPD sur une fréquence fixe.
 
     Signaux Qt :
-      acq_done(
-          phases,
-          amps,
-          info,
-          spectre_freqs,
-          spectre_dbfs,
-          iq_samples
-      )
 
-      progress(int)
-      log_message(str)
-      error(str)
+        acq_done(
+            phases,
+            amps,
+            info,
+            spectre_freqs,
+            spectre_dbfs,
+            iq_samples
+        )
+
+        progress(int)
+        log_message(str)
+        error(str)
     """
 
-    # ----------------------------------------------------------
-    # IMPORTANT :
-    # 6 paramètres maintenant :
+    # ---------------------------------------------------------
+    # 6 paramètres :
+    #
     #   1 phases
     #   2 amplitudes
     #   3 info
     #   4 fréquences spectre
     #   5 amplitudes spectre
     #   6 IQ brut
-    # ----------------------------------------------------------
+    # ---------------------------------------------------------
 
     acq_done = pyqtSignal(
         object,
@@ -671,12 +778,12 @@ class PrpdThread(QThread):
 
         self._stop_flag = False
 
-    # ----------------------------------------------------------
+    # ---------------------------------------------------------
 
     def stop(self) -> None:
         self._stop_flag = True
 
-    # ----------------------------------------------------------
+    # ---------------------------------------------------------
 
     def _log(
         self,
@@ -687,7 +794,9 @@ class PrpdThread(QThread):
             msg
         )
 
-    # ----------------------------------------------------------
+    # ---------------------------------------------------------
+    # PRPD
+    # ---------------------------------------------------------
 
     def run(self) -> None:
 
@@ -695,9 +804,37 @@ class PrpdThread(QThread):
 
         p = self.params
 
-        # ======================================================
+        # =====================================================
+        # Vérification paramètres communs
+        # =====================================================
+
+        nyq = (
+            p["rate_hz"]
+            / 2.0
+        )
+
+        requested_cutoff = float(
+            p["lowpass_cutoff_hz"]
+        )
+
+        if requested_cutoff <= 0:
+
+            self.error.emit(
+                "Low-pass cutoff invalide : "
+                "la valeur doit être > 0."
+            )
+
+            return
+
+        # Même protection que pour le scan
+        actual_cutoff = min(
+            requested_cutoff,
+            nyq * 0.95,
+        )
+
+        # =====================================================
         # CONNEXION USRP
-        # ======================================================
+        # =====================================================
 
         try:
 
@@ -724,25 +861,37 @@ class PrpdThread(QThread):
 
             return
 
-        # ======================================================
+        # =====================================================
+        # Informations paramètres utilisés
+        # =====================================================
+
+        self._log(
+            f"PRPD : "
+            f"Fs={p['rate_hz']/1e6:.3f} MS/s | "
+            f"Cutoff demandé="
+            f"{requested_cutoff/1e6:.3f} MHz | "
+            f"Cutoff appliqué="
+            f"{actual_cutoff/1e6:.3f} MHz"
+        )
+
+        # =====================================================
         # TABLEAUX POUR TOUTES LES ACQUISITIONS
-        # ======================================================
+        # =====================================================
 
         all_phases: list[np.ndarray] = []
         all_amps: list[np.ndarray] = []
         all_info: list[dict] = []
 
-        # IMPORTANT :
-        # On conserve maintenant les IQ bruts.
+        # IQ bruts
         all_iq_samples: list[np.ndarray] = []
 
         n_acq = int(
             p["prpd_n_acq"]
         )
 
-        # ======================================================
+        # =====================================================
         # ACQUISITIONS PRPD
-        # ======================================================
+        # =====================================================
 
         for i in range(
             n_acq
@@ -751,9 +900,9 @@ class PrpdThread(QThread):
             if self._stop_flag:
                 break
 
-            # --------------------------------------------------
+            # -------------------------------------------------
             # Synchronisation 50 Hz
-            # --------------------------------------------------
+            # -------------------------------------------------
 
             self._log(
                 f"Synchronisation PPS "
@@ -774,9 +923,9 @@ class PrpdThread(QThread):
                     f"acquisition sans sync."
                 )
 
-            # --------------------------------------------------
+            # -------------------------------------------------
             # Informations acquisition
-            # --------------------------------------------------
+            # -------------------------------------------------
 
             self._log(
                 f"Acquisition PRPD "
@@ -784,12 +933,13 @@ class PrpdThread(QThread):
                 f"{p['prpd_freq_hz']/1e6:.3f} MHz | "
                 f"{p['prpd_gain_db']:.0f} dB | "
                 f"Fs={p['rate_hz']/1e6:.1f} MS/s | "
+                f"Fc={actual_cutoff/1e6:.2f} MHz | "
                 f"T={p['prpd_duration_s']:.3f} s"
             )
 
-            # --------------------------------------------------
+            # -------------------------------------------------
             # Progression
-            # --------------------------------------------------
+            # -------------------------------------------------
 
             def _prog(
                 pct: int,
@@ -804,9 +954,9 @@ class PrpdThread(QThread):
                     global_pct
                 )
 
-            # ==================================================
+            # =================================================
             # ACQUISITION IQ
-            # ==================================================
+            # =================================================
 
             try:
 
@@ -858,9 +1008,9 @@ class PrpdThread(QThread):
 
                 return
 
-            # --------------------------------------------------
+            # -------------------------------------------------
             # Vérification
-            # --------------------------------------------------
+            # -------------------------------------------------
 
             if len(samples) == 0:
 
@@ -870,19 +1020,9 @@ class PrpdThread(QThread):
 
                 continue
 
-            # ==================================================
+            # =================================================
             # CONSERVATION IQ BRUT
-            # ==================================================
-
-            # IMPORTANT :
-            # samples correspond exactement aux IQ qui seront
-            # utilisés pour calculer le PRPD.
-            #
-            # np.asarray garantit le type complex64.
-            #
-            # copy() évite de garder une référence vers un
-            # buffer qui pourrait être réutilisé/modifié.
-            # ==================================================
+            # =================================================
 
             iq_copy = np.asarray(
                 samples,
@@ -899,9 +1039,13 @@ class PrpdThread(QThread):
                 f"({iq_copy.nbytes / 1024**2:.1f} MiB)"
             )
 
-            # ==================================================
+            # =================================================
             # TRAITEMENT PRPD
-            # ==================================================
+            #
+            # IMPORTANT :
+            # On transmet ici EXACTEMENT le même
+            # lowpass_cutoff_hz que celui du scan.
+            # =================================================
 
             phases, amps, info = (
                 process_pd_signal(
@@ -927,19 +1071,33 @@ class PrpdThread(QThread):
                         p[
                             "prpd_freq_hz"
                         ],
+
+                    # =========================================
+                    # MÊME CUTOFF QUE LE SCAN
+                    # =========================================
+                    cutoff_hz=
+                        p[
+                            "lowpass_cutoff_hz"
+                        ],
                 )
             )
+
+            # -------------------------------------------------
+            # Log traitement
+            # -------------------------------------------------
 
             self._log(
                 f"  {info['n_pulses']} "
                 f"pulses détectées | "
                 f"Unité : "
-                f"{info['unit']}"
+                f"{info['unit']} | "
+                f"Fc="
+                f"{info.get('cutoff_hz', actual_cutoff)/1e6:.3f} MHz"
             )
 
-            # --------------------------------------------------
+            # -------------------------------------------------
             # Stockage résultats
-            # --------------------------------------------------
+            # -------------------------------------------------
 
             all_phases.append(
                 phases
@@ -953,9 +1111,9 @@ class PrpdThread(QThread):
                 info
             )
 
-        # ======================================================
+        # =====================================================
         # VÉRIFICATION FIN ACQUISITION
-        # ======================================================
+        # =====================================================
 
         if not all_iq_samples:
 
@@ -965,16 +1123,9 @@ class PrpdThread(QThread):
 
             return
 
-        # ======================================================
+        # =====================================================
         # CONCATÉNATION IQ
-        # ======================================================
-
-        # Si n_acq = 1 :
-        #     iq_all = acquisition unique
-        #
-        # Si n_acq > 1 :
-        #     toutes les acquisitions sont concaténées.
-        # ======================================================
+        # =====================================================
 
         if len(
             all_iq_samples
@@ -990,9 +1141,9 @@ class PrpdThread(QThread):
                 all_iq_samples
             )
 
-        # ======================================================
+        # =====================================================
         # CONCATÉNATION PRPD
-        # ======================================================
+        # =====================================================
 
         valid_phases = [
             x
@@ -1028,9 +1179,9 @@ class PrpdThread(QThread):
                 dtype=float,
             )
 
-        # ======================================================
+        # =====================================================
         # INFORMATIONS
-        # ======================================================
+        # =====================================================
 
         info_merged = {
 
@@ -1105,14 +1256,34 @@ class PrpdThread(QThread):
                         "prpd_duration_s"
                     ]
                 ),
+
+            # -------------------------------------------------
+            # Cutoff demandé dans l'IHM
+            # -------------------------------------------------
+
+            "cutoff_requested_hz":
+                float(
+                    p[
+                        "lowpass_cutoff_hz"
+                    ]
+                ),
+
+            # -------------------------------------------------
+            # Cutoff réellement utilisé
+            # -------------------------------------------------
+
+            "cutoff_hz":
+                float(
+                    actual_cutoff
+                ),
         }
 
-        # ======================================================
+        # =====================================================
         # PAS DE FFT ICI
-        # ======================================================
+        # =====================================================
 
-        # Le spectre principal est déjà calculé par ScanThread.
-        # On garde ces tableaux pour compatibilité avec l'IHM.
+        # Le spectre principal est calculé par ScanThread.
+        # On conserve ces tableaux vides pour compatibilité IHM.
 
         spec_freqs = np.array(
             [],
@@ -1124,20 +1295,22 @@ class PrpdThread(QThread):
             dtype=float,
         )
 
-        # ======================================================
+        # =====================================================
         # LOG FINAL
-        # ======================================================
+        # =====================================================
 
         self._log(
             f"PRPD terminé | "
             f"{len(phases_all)} pulses | "
             f"{len(iq_all):,} IQ samples | "
-            f"{iq_all.nbytes / 1024**2:.1f} MiB"
+            f"{iq_all.nbytes / 1024**2:.1f} MiB | "
+            f"Fs={p['rate_hz']/1e6:.2f} MS/s | "
+            f"Fc={actual_cutoff/1e6:.2f} MHz"
         )
 
-        # ======================================================
+        # =====================================================
         # ENVOI À L'IHM
-        # ======================================================
+        # =====================================================
 
         self.acq_done.emit(
             phases_all,
