@@ -17,10 +17,10 @@ from scipy.stats import kurtosis, skew
 
 F_START = 100e6
 F_STOP = 2e9
-STEP_HZ = 5e6
+STEP_HZ = 10e6
 
 RATE = 12e6
-GAIN = 40
+GAIN = 76
 
 CHANNEL = 0
 ANTENNA = "RX2"
